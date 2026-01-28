@@ -1,0 +1,9 @@
+[package]
+name = "cardo"
+version = "0.1.0"
+edition = "2024"
+description = "Frame-safe geometry with compile-time checking"
+license = "MIT"
+repository = "https://github.com/engramix/cardo"
+
+[dependencies]
