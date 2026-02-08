@@ -1,0 +1,175 @@
+use num_traits::Float;
+use std::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct VecN<T, const N: usize> {
+    pub data: [T; N],
+}
+
+impl<T: Float, const N: usize> VecN<T, N> {
+    pub fn new(data: [T; N]) -> Self {
+        Self { data }
+    }
+
+    pub fn zero() -> Self {
+        Self {
+            data: [T::zero(); N],
+        }
+    }
+
+    pub fn dot(&self, rhs: &Self) -> T {
+        let mut sum = T::zero();
+        for i in 0..N {
+            sum = sum + self.data[i] * rhs.data[i];
+        }
+        sum
+    }
+
+    pub fn norm(&self) -> T {
+        self.dot(self).sqrt()
+    }
+
+    pub fn normalized(&self) -> Self {
+        let n = self.norm();
+        let mut data = self.data;
+        for i in 0..N {
+            data[i] = data[i] / n;
+        }
+        Self { data }
+    }
+}
+
+impl<T, const N: usize> Index<usize> for VecN<T, N> {
+    type Output = T;
+    fn index(&self, i: usize) -> &T {
+        &self.data[i]
+    }
+}
+
+impl<T, const N: usize> IndexMut<usize> for VecN<T, N> {
+    fn index_mut(&mut self, i: usize) -> &mut T {
+        &mut self.data[i]
+    }
+}
+
+impl<T: Float, const N: usize> Add for VecN<T, N> {
+    type Output = Self;
+    fn add(self, rhs: Self) -> Self {
+        let mut data = self.data;
+        for i in 0..N {
+            data[i] = self.data[i] + rhs.data[i];
+        }
+        Self { data }
+    }
+}
+
+impl<T: Float, const N: usize> Sub for VecN<T, N> {
+    type Output = Self;
+    fn sub(self, rhs: Self) -> Self {
+        let mut data = self.data;
+        for i in 0..N {
+            data[i] = self.data[i] - rhs.data[i];
+        }
+        Self { data }
+    }
+}
+
+// Elementwise multiplication
+impl<T: Float, const N: usize> Mul<VecN<T, N>> for VecN<T, N> {
+    type Output = Self;
+    fn mul(self, rhs: VecN<T, N>) -> Self {
+        let mut data = self.data;
+        for i in 0..N {
+            data[i] = self.data[i] * rhs.data[i];
+        }
+        Self { data }
+    }
+}
+
+// Scalar multiplication
+// vec * scalar
+impl<T: Float, const N: usize> Mul<T> for VecN<T, N> {
+    type Output = Self;
+    fn mul(self, rhs: T) -> Self {
+        let mut data = self.data;
+        for i in 0..N {
+            data[i] = self.data[i] * rhs;
+        }
+        Self { data }
+    }
+}
+
+// Scalar multiplication
+// scalar * vec
+impl<const N: usize> Mul<VecN<f64, N>> for f64 {
+    type Output = VecN<f64, N>;
+    fn mul(self, rhs: VecN<f64, N>) -> VecN<f64, N> {
+        rhs * self
+    }
+}
+
+impl<const N: usize> Mul<VecN<f32, N>> for f32 {
+    type Output = VecN<f32, N>;
+    fn mul(self, rhs: VecN<f32, N>) -> VecN<f32, N> {
+        rhs * self
+    }
+}
+
+impl<T: Float, const N: usize> Neg for VecN<T, N> {
+    type Output = Self;
+    fn neg(self) -> Self {
+        let mut data = self.data;
+        for i in 0..N {
+            data[i] = -self.data[i];
+        }
+        Self { data }
+    }
+}
+
+// Cross product only makes sense for 3D vectors
+impl<T: Float> VecN<T, 3> {
+    pub fn cross(&self, rhs: &Self) -> Self {
+        Self {
+            data: [
+                self.data[1] * rhs.data[2] - self.data[2] * rhs.data[1],
+                self.data[2] * rhs.data[0] - self.data[0] * rhs.data[2],
+                self.data[0] * rhs.data[1] - self.data[1] * rhs.data[0],
+            ],
+        }
+    }
+
+    pub fn from_xyz(x: T, y: T, z: T) -> Self {
+        Self { data: [x, y, z] }
+    }
+
+    pub fn x(&self) -> T {
+        self.data[0]
+    }
+
+    pub fn y(&self) -> T {
+        self.data[1]
+    }
+
+    pub fn z(&self) -> T {
+        self.data[2]
+    }
+
+    pub fn xyz(&self) -> [T; 3] {
+        self.data
+    }
+}
+
+impl<T: Float> From<(T, T, T)> for VecN<T, 3> {
+    fn from((x, y, z): (T, T, T)) -> Self {
+        Self { data: [x, y, z] }
+    }
+}
+
+impl<T: Float> From<VecN<T, 3>> for (T, T, T) {
+    fn from(v: VecN<T, 3>) -> (T, T, T) {
+        (v.data[0], v.data[1], v.data[2])
+    }
+}
+
+// Convenience type aliases
+pub type Vec3<T> = VecN<T, 3>;

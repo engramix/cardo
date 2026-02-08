@@ -2,8 +2,32 @@
 name = "cardo"
 version = "0.1.0"
 edition = "2024"
-description = "Frame-safe geometry with compile-time checking"
+description = "Frame-safe geometry with compile-time guarantees"
+readme = "README.md"
 license = "MIT"
 repository = "https://github.com/engramix/cardo"
 
+keywords = [
+    "geometry",
+    "lie-groups",
+    "transformations",
+    "frames",
+    "coordinate-frames",
+    "type-safety",
+]
+
+categories = [
+    "aerospace",
+    "graphics",
+    "mathematics",
+    "science::robotics",
+]
+
+
 [dependencies]
+num-traits = "0.2.19"
+
+[dev-dependencies]
+trybuild = "1.0"
+proptest = "1.5"
+approx = "0.5"
