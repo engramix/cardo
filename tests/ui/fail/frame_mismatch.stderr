@@ -5,6 +5,11 @@ error[E0277]: cannot multiply `cardo::framed::SO3<Sensor, Body>` by `cardo::fram
    |                 ^ no implementation for `cardo::framed::SO3<Sensor, Body> * cardo::framed::SO3<Body, World>`
    |
    = help: the trait `Mul<cardo::framed::SO3<Body, World>>` is not implemented for `cardo::framed::SO3<Sensor, Body>`
-   = help: the following other types implement trait `Mul<Rhs>`:
-             `cardo::framed::SO3<A, B, T>` implements `Mul<cardo::framed::SO3<C, A, T>>`
-             `cardo::framed::SO3<A, B, T>` implements `Mul<cardo::framed::Vector3<A, T>>`
+help: the following other types implement trait `Mul<Rhs>`
+  --> src/framed/so3.rs
+   |
+   | impl<A, B, C, T: Float> Mul<SO3<C, A, T>> for SO3<A, B, T> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `cardo::framed::SO3<A, B, T>` implements `Mul<cardo::framed::SO3<C, A, T>>`
+...
+   | impl<A, B, T: Float> Mul<Vector3<A, T>> for SO3<A, B, T> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `cardo::framed::SO3<A, B, T>` implements `Mul<cardo::framed::Vector3<A, T>>`
