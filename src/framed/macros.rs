@@ -1,13 +1,12 @@
-/// Implements arithmetic ops (Add, Sub, Mul<T>, Neg) for framed vector types.
+/// Implements ops for framed vector types.
 /// The type must have a `vec` field and `_frames: PhantomData<...>` field.
 ///
 /// Usage:
-///   impl_framed_vector_ops!(Vector3<In>, Vec3);   // includes 3D methods (dot, cross, etc.)
-///   impl_framed_vector_ops!(Vector6<In>);         // basic ops only
+///   impl_framed_vector_ops!(Vector3<F>, Vec3);      // general + 3D-specific methods
+///   impl_framed_vector_ops!(SE3Tangent<A, B, C>);   // general ops only
 macro_rules! impl_framed_vector_ops {
-    // Vec3: basic ops + 3D-specific methods
+    // Vec3: general ops + 3D-specific methods
     ($Type:ident < $($phantom:ident),+ >, Vec3) => {
-        // Delegate to basic ops
         impl_framed_vector_ops!($Type < $($phantom),+ >);
 
         // 3D-specific methods
@@ -19,31 +18,9 @@ macro_rules! impl_framed_vector_ops {
                 }
             }
 
-            pub fn zero() -> Self {
-                Self {
-                    vec: Vec3::zero(),
-                    _frames: PhantomData,
-                }
-            }
-
-            pub fn dot(&self, rhs: &Self) -> T {
-                self.vec.dot(&rhs.vec)
-            }
-
             pub fn cross(&self, rhs: &Self) -> Self {
                 Self {
                     vec: self.vec.cross(&rhs.vec),
-                    _frames: PhantomData,
-                }
-            }
-
-            pub fn norm(&self) -> T {
-                self.vec.norm()
-            }
-
-            pub fn normalized(&self) -> Self {
-                Self {
-                    vec: self.vec.normalized(),
                     _frames: PhantomData,
                 }
             }
@@ -59,10 +36,14 @@ macro_rules! impl_framed_vector_ops {
             pub fn z(&self) -> T {
                 self.vec.z()
             }
+
+            pub fn xyz(&self) -> &[T; 3] {
+                &self.vec.data
+            }
         }
     };
 
-    // Generic: basic ops only
+    // General: arithmetic ops + vector methods
     ($Type:ident < $($phantom:ident),+ >) => {
         impl<$($phantom,)+ T: Float> Add for $Type<$($phantom,)+ T> {
             type Output = Self;
@@ -104,6 +85,39 @@ macro_rules! impl_framed_vector_ops {
             type Output = $Type<$($phantom,)+ f32>;
             fn mul(self, rhs: $Type<$($phantom,)+ f32>) -> $Type<$($phantom,)+ f32> {
                 rhs * self
+            }
+        }
+
+        // General vector methods
+        impl<$($phantom,)+ T: Float> $Type<$($phantom,)+ T> {
+            pub fn zero() -> Self {
+                Self {
+                    vec: crate::primitives::VecN::zero(),
+                    _frames: PhantomData,
+                }
+            }
+
+            pub fn dot(&self, rhs: &Self) -> T {
+                self.vec.dot(&rhs.vec)
+            }
+
+            pub fn norm_squared(&self) -> T {
+                self.vec.norm_squared()
+            }
+
+            pub fn norm(&self) -> T {
+                self.vec.norm()
+            }
+
+            pub fn normalized(&self) -> Self {
+                Self {
+                    vec: self.vec.normalized(),
+                    _frames: PhantomData,
+                }
+            }
+
+            pub fn coeffs(&self) -> &[T] {
+                &self.vec.data
             }
         }
     };

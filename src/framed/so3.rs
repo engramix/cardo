@@ -24,7 +24,10 @@ impl<A, B, T: Float + fmt::Debug> fmt::Debug for SO3<A, B, T> {
             "SO3<{}, {}>[{:?}, {:?}, {:?}, {:?}]",
             std::any::type_name::<A>(),
             std::any::type_name::<B>(),
-            w, x, y, z
+            w,
+            x,
+            y,
+            z
         )
     }
 }
@@ -72,10 +75,29 @@ impl_framed_vector_ops!(SO3Tangent<A, B, C>, Vec3);
 
 impl<A, B, T: Float> SO3<A, B, T> {
     pub fn from_quat(quat: Quat<T>) -> Self {
+        assert!(
+            (quat.norm_squared() - T::one()).abs() < T::epsilon().sqrt(),
+            "quaternion must have unit norm"
+        );
         Self {
             quat,
             _frames: PhantomData,
         }
+    }
+
+    pub fn from_axis_angle(axis: &Vector3<A, T>, angle: T) -> Self {
+        assert!(
+            (axis.norm_squared() - T::one()).abs() < T::epsilon().sqrt(),
+            "axis must have unit norm"
+        );
+        let half = angle / (T::one() + T::one());
+        let s = half.sin();
+        Self::from_quat(Quat {
+            w: half.cos(),
+            x: axis.vec.x() * s,
+            y: axis.vec.y() * s,
+            z: axis.vec.z() * s,
+        })
     }
 
     pub fn identity() -> Self {

@@ -1,5 +1,5 @@
-mod vec;
 mod quat;
+mod vec;
 
-pub(crate) use vec::Vec3;
 pub use quat::Quat;
+pub(crate) use vec::{Vec3, VecN};

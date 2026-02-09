@@ -25,16 +25,18 @@ impl<T: Float, const N: usize> VecN<T, N> {
         sum
     }
 
+    pub fn norm_squared(&self) -> T {
+        self.dot(self)
+    }
+
     pub fn norm(&self) -> T {
-        self.dot(self).sqrt()
+        self.norm_squared().sqrt()
     }
 
     pub fn normalized(&self) -> Self {
         let n = self.norm();
         let mut data = self.data;
-        for i in 0..N {
-            data[i] = data[i] / n;
-        }
+        data.iter_mut().for_each(|x| *x = *x / n);
         Self { data }
     }
 }
@@ -154,8 +156,8 @@ impl<T: Float> VecN<T, 3> {
         self.data[2]
     }
 
-    pub fn xyz(&self) -> [T; 3] {
-        self.data
+    pub fn xyz(&self) -> &[T; 3] {
+        &self.data
     }
 }
 

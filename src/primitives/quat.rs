@@ -1,6 +1,6 @@
-use std::ops::Mul;
-use num_traits::Float;
 use crate::primitives::vec::Vec3;
+use num_traits::Float;
+use std::ops::Mul;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Quat<T = f64> {
@@ -15,26 +15,55 @@ impl<T: Float> Quat<T> {
         Self { w, x, y, z }
     }
 
-    pub fn pure(v: &Vec3<T>) -> Self {
-        Self { w: T::zero(), x: v.x(), y: v.y(), z: v.z() }
-    }
-
     pub fn wxyz(&self) -> (T, T, T, T) {
         (self.w, self.x, self.y, self.z)
     }
 
     pub fn identity() -> Self {
-        Self { w: T::one(), x: T::zero(), y: T::zero(), z: T::zero() }
+        Self {
+            w: T::one(),
+            x: T::zero(),
+            y: T::zero(),
+            z: T::zero(),
+        }
     }
 
     pub fn conjugate(&self) -> Self {
-        Self { w: self.w, x: -self.x, y: -self.y, z: -self.z }
+        Self {
+            w: self.w,
+            x: -self.x,
+            y: -self.y,
+            z: -self.z,
+        }
     }
 
-    pub fn rotate(&self, v: &Vec3<T>) -> Vec3<T> {
-        let p = Quat::pure(v);
+    pub fn norm_squared(&self) -> T {
+        self.w * self.w + self.x * self.x + self.y * self.y + self.z * self.z
+    }
+
+    pub fn norm(&self) -> T {
+        self.norm_squared().sqrt()
+    }
+
+    pub fn normalized(&self) -> Self {
+        let n = self.norm();
+        Self {
+            w: self.w / n,
+            x: self.x / n,
+            y: self.y / n,
+            z: self.z / n,
+        }
+    }
+
+    pub(crate) fn rotate(&self, v: &Vec3<T>) -> Vec3<T> {
+        let p = Quat {
+            w: T::zero(),
+            x: v.x(),
+            y: v.y(),
+            z: v.z(),
+        };
         let res = *self * p * self.conjugate();
-        Vec3::from_xyz(res.x, res.y,  res.z)
+        Vec3::from_xyz(res.x, res.y, res.z)
     }
 }
 

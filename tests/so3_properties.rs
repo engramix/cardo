@@ -3,10 +3,9 @@ use cardo::prelude::*;
 use proptest::prelude::*;
 use std::f64::consts::PI;
 
-#[derive(Debug)]
 struct A;
-#[derive(Debug)]
 struct B;
+struct C;
 
 const EPS: f64 = 1e-10;
 
@@ -31,20 +30,41 @@ fn tangent_approx_eq(v1: &SO3Tangent<A, B, A>, v2: &SO3Tangent<A, B, A>) -> bool
         && abs_diff_eq!(v1.z(), v2.z(), epsilon = EPS)
 }
 
-// Strategy for generating random tangent vectors (covers full rotation space)
-fn arb_tangent() -> impl Strategy<Value = SO3Tangent<A, B, A>> {
-    (-PI..PI, -PI..PI, -PI..PI).prop_map(|(x, y, z)| SO3Tangent::new(x, y, z))
-}
-
 // Strategy for generating random rotations via exp
 fn arb_so3() -> impl Strategy<Value = SO3<A, B>> {
-    arb_tangent().prop_map(|v| SO3::exp(&v))
+    arb_unit_quat().prop_map(SO3::from_quat)
 }
 
 // Strategy for generating small tangent vectors (for log/exp roundtrip stability)
 fn arb_tangent_small() -> impl Strategy<Value = SO3Tangent<A, B, A>> {
     (-1.0..1.0f64, -1.0..1.0f64, -1.0..1.0f64)
         .prop_map(|(x, y, z)| SO3Tangent::new(x, y, z))
+}
+
+// Strategy for generating unit quaternions
+fn arb_unit_quat() -> impl Strategy<Value = Quat<f64>> {
+    (-1.0..1.0f64, -1.0..1.0f64, -1.0..1.0f64, -1.0..1.0f64)
+        .prop_filter_map("non-zero quaternion", |(w, x, y, z)| {
+            let q = Quat::new(w, x, y, z);
+            if q.norm_squared() > 0.01 {
+                Some(q.normalized())
+            } else {
+                None
+            }
+        })
+}
+
+// Strategy for generating unit axis vectors
+fn arb_unit_axis() -> impl Strategy<Value = Vector3<A>> {
+    (-1.0..1.0f64, -1.0..1.0f64, -1.0..1.0f64)
+        .prop_filter_map("non-zero axis", |(x, y, z)| {
+            let v: Vector3<A> = Vector3::new(x, y, z);
+            if v.norm_squared() > 0.01 {
+                Some(v.normalized())
+            } else {
+                None
+            }
+        })
 }
 
 proptest! {
@@ -96,4 +116,206 @@ proptest! {
         let v_rotated = r.act(v);
         prop_assert!(abs_diff_eq!(v.norm(), v_rotated.norm(), epsilon = EPS));
     }
+
+    #[test]
+    fn from_quat_preserves_rotation(q in arb_unit_quat(), x in -10.0..10.0f64, y in -10.0..10.0f64, z in -10.0..10.0f64) {
+        let r: SO3<A, B> = SO3::from_quat(q);
+        let v: Vector3<A> = Vector3::new(x, y, z);
+        let v_rotated = r.act(v);
+        prop_assert!(abs_diff_eq!(v.norm(), v_rotated.norm(), epsilon = EPS));
+    }
+
+    #[test]
+    fn from_quat_rejects_non_unit(w in -10.0..10.0f64, x in -10.0..10.0f64, y in -10.0..10.0f64, z in -10.0..10.0f64) {
+        let q = Quat::new(w, x, y, z);
+        let norm_sq = q.norm_squared();
+        // Skip if accidentally unit
+        if (norm_sq - 1.0).abs() >= f64::EPSILON.sqrt() {
+            let result = std::panic::catch_unwind(|| {
+                let _: SO3<A, B> = SO3::from_quat(q);
+            });
+            prop_assert!(result.is_err(), "should panic for non-unit quaternion");
+        }
+    }
+
+    #[test]
+    fn from_axis_angle_zero_is_identity(axis in arb_unit_axis()) {
+        let r: SO3<A, B> = SO3::from_axis_angle(&axis, 0.0);
+        let id: SO3<A, B> = SO3::identity();
+        prop_assert!(quat_approx_eq(&r.quat, &id.quat));
+    }
+
+    #[test]
+    fn from_axis_angle_opposite_angles_cancel(axis in arb_unit_axis(), angle in -PI..PI) {
+        let r1: SO3<A, B> = SO3::from_axis_angle(&axis, angle);
+        let r2: SO3<B, A> = SO3::from_axis_angle(&Vector3::new(axis.x(), axis.y(), axis.z()), -angle);
+        let composed: SO3<A, A> = r2 * r1;
+        let id: SO3<A, A> = SO3::identity();
+        prop_assert!(quat_approx_eq(&composed.quat, &id.quat));
+    }
+
+    #[test]
+    fn from_axis_angle_preserves_norm(axis in arb_unit_axis(), angle in -PI..PI, x in -10.0..10.0f64, y in -10.0..10.0f64, z in -10.0..10.0f64) {
+        let r: SO3<A, B> = SO3::from_axis_angle(&axis, angle);
+        let v: Vector3<A> = Vector3::new(x, y, z);
+        let v_rotated = r.act(v);
+        prop_assert!(abs_diff_eq!(v.norm(), v_rotated.norm(), epsilon = EPS));
+    }
+
+    #[test]
+    fn from_axis_angle_rejects_non_unit(x in -10.0..10.0f64, y in -10.0..10.0f64, z in -10.0..10.0f64) {
+        let axis: Vector3<A> = Vector3::new(x, y, z);
+        let norm_sq = axis.norm_squared();
+        // Skip if accidentally unit
+        if (norm_sq - 1.0).abs() >= f64::EPSILON.sqrt() {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let _: SO3<A, B> = SO3::from_axis_angle(&axis, 1.0);
+            }));
+            prop_assert!(result.is_err(), "should panic for non-unit axis");
+        }
+    }
+
+    #[test]
+    fn full_rotation_in_n_steps_is_identity(
+        axis in arb_unit_axis(),
+        n in 2..100i32,
+        x in -10.0..10.0f64,
+        y in -10.0..10.0f64,
+        z in -10.0..10.0f64
+    ) {
+        let angle = 2.0 * PI / (n as f64);
+        let r: SO3<A, A> = SO3::from_axis_angle(&axis, angle);
+        let v: Vector3<A> = Vector3::new(x, y, z);
+        let v_rotated = (0..n).fold(v, |acc, _| r.act(acc));
+        prop_assert!(abs_diff_eq!(v.x(), v_rotated.x(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(v.y(), v_rotated.y(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(v.z(), v_rotated.z(), epsilon = EPS));
+    }
+
+    #[test]
+    fn action_distributes_over_composition(
+        q1 in arb_unit_quat(),
+        q2 in arb_unit_quat(),
+        x in -10.0..10.0f64,
+        y in -10.0..10.0f64,
+        z in -10.0..10.0f64
+    ) {
+        // (r1 * r2).act(v) ≈ r1.act(r2.act(v))
+        let r1: SO3<B, C> = SO3::from_quat(q1);
+        let r2: SO3<A, B> = SO3::from_quat(q2);
+        let v: Vector3<A> = Vector3::new(x, y, z);
+        let composed = r1 * r2;
+        let v1 = composed.act(v);
+        let v2 = r1.act(r2.act(v));
+        prop_assert!(abs_diff_eq!(v1.x(), v2.x(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(v1.y(), v2.y(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(v1.z(), v2.z(), epsilon = EPS));
+    }
+
+    #[test]
+    fn quaternion_double_cover(
+        q in arb_unit_quat(),
+        x in -10.0..10.0f64,
+        y in -10.0..10.0f64,
+        z in -10.0..10.0f64
+    ) {
+        // q and -q produce the same rotation
+        let (w, qx, qy, qz) = q.wxyz();
+        let neg_q = Quat::new(-w, -qx, -qy, -qz);
+        let r1: SO3<A, B> = SO3::from_quat(q);
+        let r2: SO3<A, B> = SO3::from_quat(neg_q);
+        let v: Vector3<A> = Vector3::new(x, y, z);
+        let v1 = r1.act(v);
+        let v2 = r2.act(v);
+        prop_assert!(abs_diff_eq!(v1.x(), v2.x(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(v1.y(), v2.y(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(v1.z(), v2.z(), epsilon = EPS));
+    }
+
+    #[test]
+    fn axis_angle_log_consistency(axis in arb_unit_axis(), angle in -PI..PI) {
+        // log(from_axis_angle(axis, θ)) ≈ θ * axis
+        let r: SO3<A, B> = SO3::from_axis_angle(&axis, angle);
+        let v = r.log();
+        let expected_x = angle * axis.x();
+        let expected_y = angle * axis.y();
+        let expected_z = angle * axis.z();
+        prop_assert!(abs_diff_eq!(v.x(), expected_x, epsilon = EPS));
+        prop_assert!(abs_diff_eq!(v.y(), expected_y, epsilon = EPS));
+        prop_assert!(abs_diff_eq!(v.z(), expected_z, epsilon = EPS));
+    }
+
+    #[test]
+    fn rotation_axis_is_fixed_point(axis in arb_unit_axis(), angle in -PI..PI) {
+        // Rotating the axis about itself leaves it unchanged
+        let r: SO3<A, B> = SO3::from_axis_angle(&axis, angle);
+        let axis_in_b: Vector3<B> = r.act(axis);
+        prop_assert!(abs_diff_eq!(axis.x(), axis_in_b.x(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(axis.y(), axis_in_b.y(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(axis.z(), axis_in_b.z(), epsilon = EPS));
+    }
+}
+
+// Deterministic tests for known rotations
+use std::f64::consts::FRAC_PI_2;
+
+#[test]
+fn rotate_90_about_z() {
+    // 90° about Z: (1,0,0) → (0,1,0)
+    let axis: Vector3<A> = Vector3::new(0.0, 0.0, 1.0);
+    let r: SO3<A, B> = SO3::from_axis_angle(&axis, FRAC_PI_2);
+    let v: Vector3<A> = Vector3::new(1.0, 0.0, 0.0);
+    let result = r.act(v);
+    assert!(abs_diff_eq!(result.x(), 0.0, epsilon = EPS));
+    assert!(abs_diff_eq!(result.y(), 1.0, epsilon = EPS));
+    assert!(abs_diff_eq!(result.z(), 0.0, epsilon = EPS));
+}
+
+#[test]
+fn rotate_90_about_x() {
+    // 90° about X: (0,1,0) → (0,0,1)
+    let axis: Vector3<A> = Vector3::new(1.0, 0.0, 0.0);
+    let r: SO3<A, B> = SO3::from_axis_angle(&axis, FRAC_PI_2);
+    let v: Vector3<A> = Vector3::new(0.0, 1.0, 0.0);
+    let result = r.act(v);
+    assert!(abs_diff_eq!(result.x(), 0.0, epsilon = EPS));
+    assert!(abs_diff_eq!(result.y(), 0.0, epsilon = EPS));
+    assert!(abs_diff_eq!(result.z(), 1.0, epsilon = EPS));
+}
+
+#[test]
+fn rotate_90_about_y() {
+    // 90° about Y: (0,0,1) → (1,0,0)
+    let axis: Vector3<A> = Vector3::new(0.0, 1.0, 0.0);
+    let r: SO3<A, B> = SO3::from_axis_angle(&axis, FRAC_PI_2);
+    let v: Vector3<A> = Vector3::new(0.0, 0.0, 1.0);
+    let result = r.act(v);
+    assert!(abs_diff_eq!(result.x(), 1.0, epsilon = EPS));
+    assert!(abs_diff_eq!(result.y(), 0.0, epsilon = EPS));
+    assert!(abs_diff_eq!(result.z(), 0.0, epsilon = EPS));
+}
+
+#[test]
+fn rotate_180_about_z() {
+    // 180° about Z: (1,0,0) → (-1,0,0)
+    let axis: Vector3<A> = Vector3::new(0.0, 0.0, 1.0);
+    let r: SO3<A, B> = SO3::from_axis_angle(&axis, PI);
+    let v: Vector3<A> = Vector3::new(1.0, 0.0, 0.0);
+    let result = r.act(v);
+    assert!(abs_diff_eq!(result.x(), -1.0, epsilon = EPS));
+    assert!(abs_diff_eq!(result.y(), 0.0, epsilon = EPS));
+    assert!(abs_diff_eq!(result.z(), 0.0, epsilon = EPS));
+}
+
+#[test]
+fn rotate_180_about_arbitrary_axis() {
+    // 180° about (1,1,0)/√2: (1,0,0) → (0,1,0)
+    let s = 1.0 / 2.0_f64.sqrt();
+    let axis: Vector3<A> = Vector3::new(s, s, 0.0);
+    let r: SO3<A, B> = SO3::from_axis_angle(&axis, PI);
+    let v: Vector3<A> = Vector3::new(1.0, 0.0, 0.0);
+    let result = r.act(v);
+    assert!(abs_diff_eq!(result.x(), 0.0, epsilon = EPS));
+    assert!(abs_diff_eq!(result.y(), 1.0, epsilon = EPS));
+    assert!(abs_diff_eq!(result.z(), 0.0, epsilon = EPS));
 }
