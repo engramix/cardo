@@ -1,36 +1,29 @@
 use cardo::prelude::*;
 
-// Define coordinate frames as zero-sized types
 struct World;
 struct Body;
-struct Sensor;
+struct Camera;
 
 fn main() {
-    // ==========================================================
-    // Frame-Safe Geometry: Compile-time coordinate frame checking
-    // ==========================================================
+    let camera_to_body: SO3<Camera, Body> = SO3::identity();
+    let body_to_world: SO3<Body, World> = SO3::identity();
 
-    // Sensor -> Body
-    let r1: SO3<Sensor, Body> = SO3::identity();
+    // Chain transformations: Camera -> Body -> World
+    let camera_to_world: SO3<Camera, World> = chain!(camera_to_body -> body_to_world);
 
-    // Body -> World
-    let r2: SO3<Body, World> = SO3::identity();
-
-    // Compose Sensor -> Body -> World
-    let r: SO3<Sensor, World> = r2 * r1;
-
-    // Rotate vector from Sensor to World
-    let v: Vector3<Sensor> = Vector3::new(1.0, 0.0, 0.0);
-    let w = r * v;
+    let v: Vector3<Camera> = Vector3::new(1.0, 0.0, 0.0);
+    let w: Vector3<World> = camera_to_world * v;
 
     // Frame mismatch? The compiler catches it:
     //
     //   let v: Vector3<Body> = Vector3::new(1.0, 0.0, 0.0);
-    //   let w = r * v;
-    //            ^^^ error: SO3<Sensor, World> cannot act on Vector3<Body>
+    //   let w = camera_to_world * v;
     //
-    // This bug would silently produce wrong results in other libraries.
-    // With cardo, it's a compile-time error.
+    //   error[E0277]: cannot multiply `SO3<Camera, World>` by `Vector3<Body>`
+    //     |
+    //     |     let w = camera_to_world * v;
+    //     |                             ^ the trait `Mul<Vector3<Body>>` is not
+    //     |                               implemented for `SO3<Camera, World>`
 
     println!("{:?}", w);
 }

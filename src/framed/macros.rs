@@ -1,3 +1,74 @@
+/// Chains transformations in a readable left-to-right or right-to-left style.
+///
+/// Usage:
+///   chain!(r1 -> r2 -> r3)  // left-to-right: r1.then(r2).then(r3)
+///   chain!(r3 <- r2 <- r1)  // right-to-left: r3.compose(r2).compose(r1)
+///
+/// Both produce the same result: first r1, then r2, then r3.
+#[macro_export]
+macro_rules! chain {
+    // --- Internal @parse rules ---
+
+    // Found -> : switch to left-to-right mode
+    (@parse [$($acc:tt)+] -> $($rest:tt)+) => {
+        chain!(@then [$($acc)+] [] $($rest)+)
+    };
+
+    // Found <- : switch to right-to-left mode
+    (@parse [$($acc:tt)+] <- $($rest:tt)+) => {
+        chain!(@compose [$($acc)+] [] $($rest)+)
+    };
+
+    // Keep accumulating tokens
+    (@parse [$($acc:tt)*] $next:tt $($rest:tt)*) => {
+        chain!(@parse [$($acc)* $next] $($rest)*)
+    };
+
+    // End of input with no arrow - just return the expression
+    (@parse [$($acc:tt)+]) => {
+        $($acc)+
+    };
+
+    // --- Internal @then rules (left-to-right) ---
+
+    // Found another ->
+    (@then [$($left:tt)+] [$($mid:tt)+] -> $($rest:tt)+) => {
+        chain!(@then [($($left)+).then($($mid)+)] [] $($rest)+)
+    };
+
+    // Accumulate tokens
+    (@then [$($left:tt)+] [$($mid:tt)*] $next:tt $($rest:tt)*) => {
+        chain!(@then [$($left)+] [$($mid)* $next] $($rest)*)
+    };
+
+    // End of input
+    (@then [$($left:tt)+] [$($mid:tt)+]) => {
+        ($($left)+).then($($mid)+)
+    };
+
+    // --- Internal @compose rules (right-to-left) ---
+
+    // Found another <-
+    (@compose [$($left:tt)+] [$($mid:tt)+] <- $($rest:tt)+) => {
+        chain!(@compose [($($left)+).compose($($mid)+)] [] $($rest)+)
+    };
+
+    // Accumulate tokens
+    (@compose [$($left:tt)+] [$($mid:tt)*] $next:tt $($rest:tt)*) => {
+        chain!(@compose [$($left)+] [$($mid)* $next] $($rest)*)
+    };
+
+    // End of input
+    (@compose [$($left:tt)+] [$($mid:tt)+]) => {
+        ($($left)+).compose($($mid)+)
+    };
+
+    // --- Entry point (MUST be last so internal patterns match first) ---
+    ($($tokens:tt)+) => {
+        chain!(@parse [] $($tokens)+)
+    };
+}
+
 /// Implements ops for framed vector types.
 /// The type must have a `vec` field and `_frames: PhantomData<...>` field.
 ///

@@ -158,6 +158,10 @@ impl<A, B, T: Float> SO3<A, B, T> {
         SO3::from_quat(self.quat * rhs.quat)
     }
 
+    pub fn then<C>(self, lhs: SO3<B, C, T>) -> SO3<A, C, T> {
+        SO3::from_quat(lhs.quat * self.quat)
+    }
+
     pub fn act(&self, v: Vector3<A, T>) -> Vector3<B, T> {
         Vector3 {
             vec: self.quat.rotate(&v.vec),

@@ -6,6 +6,7 @@ use std::f64::consts::PI;
 struct A;
 struct B;
 struct C;
+struct D;
 
 const EPS: f64 = 1e-10;
 
@@ -35,10 +36,17 @@ fn arb_so3() -> impl Strategy<Value = SO3<A, B>> {
     arb_unit_quat().prop_map(SO3::from_quat)
 }
 
-// Strategy for generating small tangent vectors (for log/exp roundtrip stability)
+// Strategy for generating small tangent vectors (tests small angle approximations)
 fn arb_tangent_small() -> impl Strategy<Value = SO3Tangent<A, B, A>> {
-    (-1.0..1.0f64, -1.0..1.0f64, -1.0..1.0f64)
+    (-1e-10..1e-10f64, -1e-10..1e-10f64, -1e-10..1e-10f64)
         .prop_map(|(x, y, z)| SO3Tangent::new(x, y, z))
+}
+
+// Strategy for generating tangent vectors with magnitude bounded by π
+fn arb_tangent() -> impl Strategy<Value = SO3Tangent<A, B, A>> {
+    (arb_unit_axis(), -PI..PI).prop_map(|(axis, angle)| {
+        SO3Tangent::new(axis.x() * angle, axis.y() * angle, axis.z() * angle)
+    })
 }
 
 // Strategy for generating unit quaternions
@@ -77,11 +85,23 @@ proptest! {
     }
 
     #[test]
-    fn log_exp_roundtrip(v in arb_tangent_small()) {
-        // log(exp(v)) ≈ v (for small v)
+    fn log_exp_roundtrip(v in arb_tangent()) {
+        // log(exp(v)) ≈ v
         let r = SO3::<A, B>::exp(&v);
         let v2 = r.log();
         prop_assert!(tangent_approx_eq(&v, &v2));
+    }
+
+    #[test]
+    fn exp_small_angle_produces_unit_quaternion(v in arb_tangent_small()) {
+        let r = SO3::<A, B>::exp(&v);
+        prop_assert!(abs_diff_eq!(r.quat.norm_squared(), 1.0, epsilon = EPS));
+    }
+
+    #[test]
+    fn exp_large_angle_produces_unit_quaternion(v in arb_tangent()) {
+        let r = SO3::<A, B>::exp(&v);
+        prop_assert!(abs_diff_eq!(r.quat.norm_squared(), 1.0, epsilon = EPS));
     }
 
     #[test]
@@ -190,6 +210,44 @@ proptest! {
         prop_assert!(abs_diff_eq!(v.x(), v_rotated.x(), epsilon = EPS));
         prop_assert!(abs_diff_eq!(v.y(), v_rotated.y(), epsilon = EPS));
         prop_assert!(abs_diff_eq!(v.z(), v_rotated.z(), epsilon = EPS));
+    }
+
+    #[test]
+    fn then_is_left_to_right_composition(
+        q1 in arb_unit_quat(),
+        q2 in arb_unit_quat(),
+        x in -10.0..10.0f64,
+        y in -10.0..10.0f64,
+        z in -10.0..10.0f64
+    ) {
+        // r1.then(r2).act(v) = r2.act(r1.act(v))
+        let r1: SO3<A, B> = SO3::from_quat(q1);
+        let r2: SO3<B, C> = SO3::from_quat(q2);
+        let v: Vector3<A> = Vector3::new(x, y, z);
+        let v1 = r1.then(r2).act(v);
+        let v2 = r2.act(r1.act(v));
+        prop_assert!(abs_diff_eq!(v1.x(), v2.x(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(v1.y(), v2.y(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(v1.z(), v2.z(), epsilon = EPS));
+    }
+
+    #[test]
+    fn compose_is_right_to_left_composition(
+        q1 in arb_unit_quat(),
+        q2 in arb_unit_quat(),
+        x in -10.0..10.0f64,
+        y in -10.0..10.0f64,
+        z in -10.0..10.0f64
+    ) {
+        // r1.compose(r2).act(v) = r1.act(r2.act(v))
+        let r1: SO3<A, B> = SO3::from_quat(q1);
+        let r2: SO3<C, A> = SO3::from_quat(q2);
+        let v: Vector3<C> = Vector3::new(x, y, z);
+        let v1 = r1.compose(r2).act(v);
+        let v2 = r1.act(r2.act(v));
+        prop_assert!(abs_diff_eq!(v1.x(), v2.x(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(v1.y(), v2.y(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(v1.z(), v2.z(), epsilon = EPS));
     }
 
     #[test]
@@ -318,4 +376,66 @@ fn rotate_180_about_arbitrary_axis() {
     assert!(abs_diff_eq!(result.x(), 0.0, epsilon = EPS));
     assert!(abs_diff_eq!(result.y(), 1.0, epsilon = EPS));
     assert!(abs_diff_eq!(result.z(), 0.0, epsilon = EPS));
+}
+
+// Tests for chain! macro
+#[test]
+fn chain_arrow_right_two_rotations() {
+    let axis: Vector3<A> = Vector3::new(0.0, 0.0, 1.0);
+    let r1: SO3<A, B> = SO3::from_axis_angle(&axis, FRAC_PI_2);
+    let r2: SO3<B, C> = SO3::from_axis_angle(&Vector3::new(0.0, 0.0, 1.0), FRAC_PI_2);
+
+    let chained: SO3<A, C> = chain!(r1 -> r2);
+    let manual: SO3<A, C> = r1.then(r2);
+
+    assert!(quat_approx_eq(&chained.quat, &manual.quat));
+}
+
+#[test]
+fn chain_arrow_left_two_rotations() {
+    let axis: Vector3<A> = Vector3::new(0.0, 0.0, 1.0);
+    let r1: SO3<A, B> = SO3::from_axis_angle(&axis, FRAC_PI_2);
+    let r2: SO3<B, C> = SO3::from_axis_angle(&Vector3::new(0.0, 0.0, 1.0), FRAC_PI_2);
+
+    let chained: SO3<A, C> = chain!(r2 <- r1);
+    let manual: SO3<A, C> = r2.compose(r1);
+
+    assert!(quat_approx_eq(&chained.quat, &manual.quat));
+}
+
+#[test]
+fn chain_arrow_right_three_rotations() {
+    let r1: SO3<A, B> = SO3::from_axis_angle(&Vector3::new(1.0, 0.0, 0.0), FRAC_PI_2);
+    let r2: SO3<B, C> = SO3::from_axis_angle(&Vector3::new(0.0, 1.0, 0.0), FRAC_PI_2);
+    let r3: SO3<C, D> = SO3::from_axis_angle(&Vector3::new(0.0, 0.0, 1.0), FRAC_PI_2);
+
+    let chained: SO3<A, D> = chain!(r1 -> r2 -> r3);
+    let manual: SO3<A, D> = r1.then(r2).then(r3);
+
+    assert!(quat_approx_eq(&chained.quat, &manual.quat));
+}
+
+#[test]
+fn chain_arrow_left_three_rotations() {
+    let r1: SO3<A, B> = SO3::from_axis_angle(&Vector3::new(1.0, 0.0, 0.0), FRAC_PI_2);
+    let r2: SO3<B, C> = SO3::from_axis_angle(&Vector3::new(0.0, 1.0, 0.0), FRAC_PI_2);
+    let r3: SO3<C, D> = SO3::from_axis_angle(&Vector3::new(0.0, 0.0, 1.0), FRAC_PI_2);
+
+    let chained: SO3<A, D> = chain!(r3 <- r2 <- r1);
+    let manual: SO3<A, D> = r3.compose(r2).compose(r1);
+
+    assert!(quat_approx_eq(&chained.quat, &manual.quat));
+}
+
+#[test]
+fn chain_both_directions_equivalent() {
+    // chain!(r1 -> r2 -> r3) should equal chain!(r3 <- r2 <- r1)
+    let r1: SO3<A, B> = SO3::from_axis_angle(&Vector3::new(1.0, 0.0, 0.0), 0.5);
+    let r2: SO3<B, C> = SO3::from_axis_angle(&Vector3::new(0.0, 1.0, 0.0), 0.7);
+    let r3: SO3<C, D> = SO3::from_axis_angle(&Vector3::new(0.0, 0.0, 1.0), 0.3);
+
+    let left_to_right: SO3<A, D> = chain!(r1 -> r2 -> r3);
+    let right_to_left: SO3<A, D> = chain!(r3 <- r2 <- r1);
+
+    assert!(quat_approx_eq(&left_to_right.quat, &right_to_left.quat));
 }
