@@ -1,4 +1,8 @@
 # cardo
+
+[![Test](https://github.com/engramix/cardo/actions/workflows/test.yml/badge.svg)](https://github.com/engramix/cardo/actions/workflows/test.yml)
+[![codecov](https://codecov.io/gh/engramix/cardo/graph/badge.svg)](https://codecov.io/gh/engramix/cardo)
+
 Frame-safe geometry with compile-time guarantees
 
 <!-- BEGIN:examples/basic.rs -->
