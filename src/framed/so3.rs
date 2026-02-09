@@ -43,7 +43,7 @@ impl<A, B, T: Float> Clone for SO3<A, B, T> {
 /// Tangent vector to SO3
 ///
 /// `SO3Tangent<A, B, C>`:
-/// - Quantity of frame A (e.g. angular velocity) relative to frame B, expressed in frame C.
+/// - Angular change (e.g. angular velocity) of frame A relative to frame B, expressed in frame C.
 #[derive(PartialEq)]
 pub struct SO3Tangent<A, B, C, T: Float = f64> {
     pub vec: Vec3<T>,

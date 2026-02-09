@@ -138,24 +138,30 @@ proptest! {
     }
 
     #[test]
+    fn mul_vec_does_act(r in arb_so3(), x in -10.0..10.0f64, y in -10.0..10.0f64, z in -10.0..10.0f64) {
+        let v: Vector3<A> = Vector3::new(x, y, z);
+        let via_mul = r * v;
+        let via_act = r.act(v);
+        prop_assert!(abs_diff_eq!(via_mul.x(), via_act.x(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(via_mul.y(), via_act.y(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(via_mul.z(), via_act.z(), epsilon = EPS));
+    }
+
+    #[test]
+    fn mul_group_does_compose(q1 in arb_unit_quat(), q2 in arb_unit_quat()) {
+        let r1: SO3<A, B> = SO3::from_quat(q1);
+        let r2: SO3<C, A> = SO3::from_quat(q2);
+        let via_mul = r1 * r2;
+        let via_compose = r1.compose(r2);
+        prop_assert!(quat_approx_eq(&via_mul.quat, &via_compose.quat));
+    }
+
+    #[test]
     fn from_quat_preserves_rotation(q in arb_unit_quat(), x in -10.0..10.0f64, y in -10.0..10.0f64, z in -10.0..10.0f64) {
         let r: SO3<A, B> = SO3::from_quat(q);
         let v: Vector3<A> = Vector3::new(x, y, z);
         let v_rotated = r.act(v);
         prop_assert!(abs_diff_eq!(v.norm(), v_rotated.norm(), epsilon = EPS));
-    }
-
-    #[test]
-    fn from_quat_rejects_non_unit(w in -10.0..10.0f64, x in -10.0..10.0f64, y in -10.0..10.0f64, z in -10.0..10.0f64) {
-        let q = Quat::new(w, x, y, z);
-        let norm_sq = q.norm_squared();
-        // Skip if accidentally unit
-        if (norm_sq - 1.0).abs() >= f64::EPSILON.sqrt() {
-            let result = std::panic::catch_unwind(|| {
-                let _: SO3<A, B> = SO3::from_quat(q);
-            });
-            prop_assert!(result.is_err(), "should panic for non-unit quaternion");
-        }
     }
 
     #[test]
@@ -180,19 +186,6 @@ proptest! {
         let v: Vector3<A> = Vector3::new(x, y, z);
         let v_rotated = r.act(v);
         prop_assert!(abs_diff_eq!(v.norm(), v_rotated.norm(), epsilon = EPS));
-    }
-
-    #[test]
-    fn from_axis_angle_rejects_non_unit(x in -10.0..10.0f64, y in -10.0..10.0f64, z in -10.0..10.0f64) {
-        let axis: Vector3<A> = Vector3::new(x, y, z);
-        let norm_sq = axis.norm_squared();
-        // Skip if accidentally unit
-        if (norm_sq - 1.0).abs() >= f64::EPSILON.sqrt() {
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                let _: SO3<A, B> = SO3::from_axis_angle(&axis, 1.0);
-            }));
-            prop_assert!(result.is_err(), "should panic for non-unit axis");
-        }
     }
 
     #[test]
@@ -438,4 +431,49 @@ fn chain_both_directions_equivalent() {
     let right_to_left: SO3<A, D> = chain!(r3 <- r2 <- r1);
 
     assert!(quat_approx_eq(&left_to_right.quat, &right_to_left.quat));
+}
+
+// Tests for panic on non-unit inputs
+#[test]
+#[should_panic]
+fn from_quat_panics_on_non_unit() {
+    let _: SO3<A, B> = SO3::from_quat(Quat::new(1.0, 1.0, 1.0, 1.0));
+}
+
+#[test]
+#[should_panic]
+fn from_axis_angle_panics_on_non_unit() {
+    let axis: Vector3<A> = Vector3::new(1.0, 1.0, 1.0);
+    let _: SO3<A, B> = SO3::from_axis_angle(&axis, 1.0);
+}
+
+// Tests for Debug and Clone
+#[test]
+fn so3_debug() {
+    let r: SO3<A, B> = SO3::identity();
+    let s = format!("{:?}", r);
+    assert!(s.contains("SO3"));
+}
+
+#[test]
+fn so3_clone() {
+    let r: SO3<A, B> = SO3::identity();
+    let r2 = r.clone();
+    assert!(quat_approx_eq(&r.quat, &r2.quat));
+}
+
+#[test]
+fn so3_tangent_debug() {
+    let v: SO3Tangent<A, B, A> = SO3Tangent::new(1.0, 2.0, 3.0);
+    let s = format!("{:?}", v);
+    assert!(s.contains("SO3Tangent"));
+}
+
+#[test]
+fn so3_tangent_clone() {
+    let v: SO3Tangent<A, B, A> = SO3Tangent::new(1.0, 2.0, 3.0);
+    let v2 = v.clone();
+    assert!(abs_diff_eq!(v.x(), v2.x(), epsilon = EPS));
+    assert!(abs_diff_eq!(v.y(), v2.y(), epsilon = EPS));
+    assert!(abs_diff_eq!(v.z(), v2.z(), epsilon = EPS));
 }
