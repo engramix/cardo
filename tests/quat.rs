@@ -1,5 +1,5 @@
 use approx::abs_diff_eq;
-use cardo::primitives::Quat;
+use cardo::Quat;
 
 const EPS: f64 = 1e-10;
 

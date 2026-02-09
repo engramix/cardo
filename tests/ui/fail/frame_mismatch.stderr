@@ -1,15 +1,15 @@
-error[E0277]: cannot multiply `cardo::framed::SO3<Sensor, Body>` by `cardo::framed::SO3<Body, World>`
+error[E0277]: cannot multiply `cardo::SO3<Sensor, Body>` by `cardo::SO3<Body, World>`
   --> tests/ui/fail/frame_mismatch.rs:11:17
    |
 11 |     let _r = r1 * r2;
-   |                 ^ no implementation for `cardo::framed::SO3<Sensor, Body> * cardo::framed::SO3<Body, World>`
+   |                 ^ no implementation for `cardo::SO3<Sensor, Body> * cardo::SO3<Body, World>`
    |
-   = help: the trait `Mul<cardo::framed::SO3<Body, World>>` is not implemented for `cardo::framed::SO3<Sensor, Body>`
+   = help: the trait `Mul<cardo::SO3<Body, World>>` is not implemented for `cardo::SO3<Sensor, Body>`
 help: the following other types implement trait `Mul<Rhs>`
-  --> src/framed/so3.rs
+  --> src/so3.rs
    |
    | impl<A, B, C, T: Float> Mul<SO3<C, A, T>> for SO3<A, B, T> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `cardo::framed::SO3<A, B, T>` implements `Mul<cardo::framed::SO3<C, A, T>>`
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `cardo::SO3<A, B, T>` implements `Mul<cardo::SO3<C, A, T>>`
 ...
    | impl<A, B, T: Float> Mul<Vector3<A, T>> for SO3<A, B, T> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `cardo::framed::SO3<A, B, T>` implements `Mul<cardo::framed::Vector3<A, T>>`
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `cardo::SO3<A, B, T>` implements `Mul<cardo::Vector3<A, T>>`

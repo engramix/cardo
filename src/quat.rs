@@ -1,4 +1,3 @@
-use crate::primitives::vec::Vec3;
 use num_traits::Float;
 use std::ops::Mul;
 
@@ -55,15 +54,15 @@ impl<T: Float> Quat<T> {
         }
     }
 
-    pub(crate) fn rotate(&self, v: &Vec3<T>) -> Vec3<T> {
+    pub(crate) fn rotate(&self, v: &[T; 3]) -> [T; 3] {
         let p = Quat {
             w: T::zero(),
-            x: v.x(),
-            y: v.y(),
-            z: v.z(),
+            x: v[0],
+            y: v[1],
+            z: v[2],
         };
         let res = *self * p * self.conjugate();
-        Vec3::from_xyz(res.x, res.y, res.z)
+        [res.x, res.y, res.z]
     }
 }
 

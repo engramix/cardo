@@ -1,5 +1,5 @@
-use crate::framed::Vector3;
-use crate::primitives::{Quat, Vec3};
+use crate::quat::Quat;
+use crate::vector3::Vector3;
 use num_traits::Float;
 use std::fmt;
 use std::marker::PhantomData;
@@ -42,11 +42,11 @@ impl<A, B, T: Float> Clone for SO3<A, B, T> {
 /// `SO3Tangent<A, B, C>`:
 /// - Angular change (e.g. angular velocity) of frame A relative to frame B, expressed in frame C.
 pub struct SO3Tangent<A, B, C, T: Float = f64> {
-    pub vec: Vec3<T>,
-    pub(crate) _frames: PhantomData<(A, B, C)>,
+    pub data: [T; 3],
+    _frames: PhantomData<(A, B, C)>,
 }
 
-impl_framed_vector_ops!(SO3Tangent<A, B, C>, Vec3);
+impl_framed_vector!(SO3Tangent<A, B, C>, 3);
 
 impl<A, B, T: Float> SO3<A, B, T> {
     pub fn from_quat(quat: Quat<T>) -> Self {
@@ -65,9 +65,9 @@ impl<A, B, T: Float> SO3<A, B, T> {
         let s = half.sin();
         Self::from_quat(Quat {
             w: half.cos(),
-            x: axis.vec.x() * s,
-            y: axis.vec.y() * s,
-            z: axis.vec.z() * s,
+            x: axis.x() * s,
+            y: axis.y() * s,
+            z: axis.z() * s,
         })
     }
 
@@ -102,7 +102,7 @@ impl<A, B, T: Float> SO3<A, B, T> {
         let (w, x, y, z) = self.quat.wxyz();
         let sin_angle_sq = x * x + y * y + z * z;
 
-        let log_coeff = if sin_angle_sq < T::epsilon() {
+        let scale = if sin_angle_sq < T::epsilon() {
             T::one()
         } else {
             let sin_angle = sin_angle_sq.sqrt();
@@ -115,10 +115,8 @@ impl<A, B, T: Float> SO3<A, B, T> {
             angle / sin_angle
         };
 
-        SO3Tangent {
-            vec: Vec3::from_xyz(x, y, z) * (T::one() + T::one()) * log_coeff,
-            _frames: PhantomData,
-        }
+        let two = T::one() + T::one();
+        SO3Tangent::new(x * two * scale, y * two * scale, z * two * scale)
     }
 
     pub fn inverse(&self) -> SO3<B, A, T> {
@@ -134,10 +132,7 @@ impl<A, B, T: Float> SO3<A, B, T> {
     }
 
     pub fn act(&self, v: Vector3<A, T>) -> Vector3<B, T> {
-        Vector3 {
-            vec: self.quat.rotate(&v.vec),
-            _frames: PhantomData,
-        }
+        Vector3::from_data(self.quat.rotate(&v.data))
     }
 
     pub fn to_matrix(&self) -> [[T; 3]; 3] {

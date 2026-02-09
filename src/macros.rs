@@ -70,83 +70,50 @@ macro_rules! chain {
 }
 
 /// Implements ops for framed vector types.
-/// The type must have a `vec` field and `_frames: PhantomData<...>` field.
+/// The type must have a `data: [T; N]` field and `_frames: PhantomData<...>` field.
 ///
 /// Usage:
-///   impl_framed_vector_ops!(Vector3<F>, Vec3);      // general + 3D-specific methods
-///   impl_framed_vector_ops!(SE3Tangent<A, B, C>);   // general ops only
-macro_rules! impl_framed_vector_ops {
-    // Vec3: general ops + 3D-specific methods
-    ($Type:ident < $($phantom:ident),+ >, Vec3) => {
-        impl_framed_vector_ops!($Type < $($phantom),+ >);
-
-        // 3D-specific methods
-        impl<$($phantom,)+ T: Float> $Type<$($phantom,)+ T> {
-            pub fn new(x: T, y: T, z: T) -> Self {
-                Self {
-                    vec: Vec3::from_xyz(x, y, z),
-                    _frames: PhantomData,
-                }
-            }
-
-            pub fn cross(&self, rhs: &Self) -> Self {
-                Self {
-                    vec: self.vec.cross(&rhs.vec),
-                    _frames: PhantomData,
-                }
-            }
-
-            pub fn x(&self) -> T {
-                self.vec.x()
-            }
-
-            pub fn y(&self) -> T {
-                self.vec.y()
-            }
-
-            pub fn z(&self) -> T {
-                self.vec.z()
-            }
-
-            pub fn xyz(&self) -> &[T; 3] {
-                self.vec.xyz()
-            }
-        }
+///   impl_framed_vector!(Vector3<F>, 3)          // general + 3D-specific methods
+///   impl_framed_vector!(SO3Tangent<A, B, C>, 3) // general + 3D-specific methods
+macro_rules! impl_framed_vector {
+    ($Type:ident < $($phantom:ident),+ >, $N:tt) => {
+        impl_framed_vector!(@general $Type < $($phantom),+ >, $N);
+        impl_framed_vector!(@specialize $Type < $($phantom),+ >, $N);
     };
 
-    // General: arithmetic ops + vector methods
-    ($Type:ident < $($phantom:ident),+ >) => {
+    // --- General ops for any N ---
+    (@general $Type:ident < $($phantom:ident),+ >, $N:literal) => {
         impl<$($phantom,)+ T: Float> Add for $Type<$($phantom,)+ T> {
             type Output = Self;
             fn add(self, rhs: Self) -> Self {
-                Self { vec: self.vec + rhs.vec, _frames: PhantomData }
+                Self { data: std::array::from_fn(|i| self.data[i] + rhs.data[i]), _frames: PhantomData }
             }
         }
 
         impl<$($phantom,)+ T: Float> Sub for $Type<$($phantom,)+ T> {
             type Output = Self;
             fn sub(self, rhs: Self) -> Self {
-                Self { vec: self.vec - rhs.vec, _frames: PhantomData }
+                Self { data: std::array::from_fn(|i| self.data[i] - rhs.data[i]), _frames: PhantomData }
             }
         }
 
         impl<$($phantom,)+ T: Float> Neg for $Type<$($phantom,)+ T> {
             type Output = Self;
             fn neg(self) -> Self {
-                Self { vec: -self.vec, _frames: PhantomData }
+                Self { data: std::array::from_fn(|i| -self.data[i]), _frames: PhantomData }
             }
         }
 
         impl<$($phantom,)+ T: Float> Index<usize> for $Type<$($phantom,)+ T> {
             type Output = T;
             fn index(&self, i: usize) -> &T {
-                &self.vec[i]
+                &self.data[i]
             }
         }
 
         impl<$($phantom,)+ T: Float> IndexMut<usize> for $Type<$($phantom,)+ T> {
             fn index_mut(&mut self, i: usize) -> &mut T {
-                &mut self.vec[i]
+                &mut self.data[i]
             }
         }
 
@@ -154,7 +121,7 @@ macro_rules! impl_framed_vector_ops {
         impl<$($phantom,)+ T: Float> Mul<T> for $Type<$($phantom,)+ T> {
             type Output = Self;
             fn mul(self, rhs: T) -> Self {
-                Self { vec: self.vec * rhs, _frames: PhantomData }
+                Self { data: std::array::from_fn(|i| self.data[i] * rhs), _frames: PhantomData }
             }
         }
 
@@ -162,7 +129,7 @@ macro_rules! impl_framed_vector_ops {
         impl<$($phantom,)+ T: Float> Mul<$Type<$($phantom,)+ T>> for $Type<$($phantom,)+ T> {
             type Output = Self;
             fn mul(self, rhs: Self) -> Self {
-                Self { vec: self.vec * rhs.vec, _frames: PhantomData }
+                Self { data: std::array::from_fn(|i| self.data[i] * rhs.data[i]), _frames: PhantomData }
             }
         }
 
@@ -183,41 +150,50 @@ macro_rules! impl_framed_vector_ops {
 
         // General vector methods
         impl<$($phantom,)+ T: Float> $Type<$($phantom,)+ T> {
+            pub fn from_data(data: [T; $N]) -> Self {
+                Self { data, _frames: PhantomData }
+            }
+
             pub fn zero() -> Self {
                 Self {
-                    vec: crate::primitives::VecN::zero(),
+                    data: [T::zero(); $N],
                     _frames: PhantomData,
                 }
             }
 
             pub fn dot(&self, rhs: &Self) -> T {
-                self.vec.dot(&rhs.vec)
+                let mut sum = T::zero();
+                for i in 0..$N {
+                    sum = sum + self.data[i] * rhs.data[i];
+                }
+                sum
             }
 
             pub fn norm_squared(&self) -> T {
-                self.vec.norm_squared()
+                self.dot(self)
             }
 
             pub fn norm(&self) -> T {
-                self.vec.norm()
+                self.norm_squared().sqrt()
             }
 
             pub fn normalized(&self) -> Self {
+                let n = self.norm();
                 Self {
-                    vec: self.vec.normalized(),
+                    data: std::array::from_fn(|i| self.data[i] / n),
                     _frames: PhantomData,
                 }
             }
 
             pub fn coeffs(&self) -> &[T] {
-                self.vec.coeffs()
+                &self.data
             }
         }
 
-        // PartialEq - compare only the vec, not the phantom
+        // PartialEq - compare only the data, not the phantom
         impl<$($phantom,)+ T: Float> PartialEq for $Type<$($phantom,)+ T> {
             fn eq(&self, other: &Self) -> bool {
-                self.vec == other.vec
+                self.data == other.data
             }
         }
 
@@ -245,8 +221,50 @@ macro_rules! impl_framed_vector_ops {
                 // Remove trailing ", f64>" or ", f32>" from type name
                 let name = name.trim_end_matches(", f64>").trim_end_matches(", f32>");
                 let name = if !name.ends_with('>') { format!("{}>", name) } else { name.to_string() };
-                write!(f, "{}{:?}", name, self.vec.coeffs())
+                write!(f, "{}{:?}", name, self.coeffs())
             }
         }
     };
+
+    // --- 3D-specific methods ---
+    (@specialize $Type:ident < $($phantom:ident),+ >, 3) => {
+        impl<$($phantom,)+ T: Float> $Type<$($phantom,)+ T> {
+            pub fn new(x: T, y: T, z: T) -> Self {
+                Self {
+                    data: [x, y, z],
+                    _frames: PhantomData,
+                }
+            }
+
+            pub fn cross(&self, rhs: &Self) -> Self {
+                Self {
+                    data: [
+                        self.data[1] * rhs.data[2] - self.data[2] * rhs.data[1],
+                        self.data[2] * rhs.data[0] - self.data[0] * rhs.data[2],
+                        self.data[0] * rhs.data[1] - self.data[1] * rhs.data[0],
+                    ],
+                    _frames: PhantomData,
+                }
+            }
+
+            pub fn x(&self) -> T {
+                self.data[0]
+            }
+
+            pub fn y(&self) -> T {
+                self.data[1]
+            }
+
+            pub fn z(&self) -> T {
+                self.data[2]
+            }
+
+            pub fn xyz(&self) -> &[T; 3] {
+                &self.data
+            }
+        }
+    };
+
+    // Fallback for non-3D sizes
+    (@specialize $Type:ident < $($phantom:ident),+ >, $N:literal) => {};
 }
