@@ -130,6 +130,27 @@ macro_rules! impl_framed_vector_ops {
             }
         }
 
+        impl<$($phantom,)+ T: Float> Neg for $Type<$($phantom,)+ T> {
+            type Output = Self;
+            fn neg(self) -> Self {
+                Self { vec: -self.vec, _frames: PhantomData }
+            }
+        }
+
+        impl<$($phantom,)+ T: Float> Index<usize> for $Type<$($phantom,)+ T> {
+            type Output = T;
+            fn index(&self, i: usize) -> &T {
+                &self.vec.data[i]
+            }
+        }
+
+        impl<$($phantom,)+ T: Float> IndexMut<usize> for $Type<$($phantom,)+ T> {
+            fn index_mut(&mut self, i: usize) -> &mut T {
+                &mut self.vec.data[i]
+            }
+        }
+
+        // vec * scalar (right multiplication)
         impl<$($phantom,)+ T: Float> Mul<T> for $Type<$($phantom,)+ T> {
             type Output = Self;
             fn mul(self, rhs: T) -> Self {
@@ -137,10 +158,11 @@ macro_rules! impl_framed_vector_ops {
             }
         }
 
-        impl<$($phantom,)+ T: Float> Neg for $Type<$($phantom,)+ T> {
+        // elementwise multiplication
+        impl<$($phantom,)+ T: Float> Mul<$Type<$($phantom,)+ T>> for $Type<$($phantom,)+ T> {
             type Output = Self;
-            fn neg(self) -> Self {
-                Self { vec: -self.vec, _frames: PhantomData }
+            fn mul(self, rhs: Self) -> Self {
+                Self { vec: self.vec * rhs.vec, _frames: PhantomData }
             }
         }
 

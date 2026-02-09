@@ -1,7 +1,7 @@
 use num_traits::Float;
 use std::fmt;
 use std::marker::PhantomData;
-use std::ops::{Add, Mul, Neg, Sub};
+use std::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
 
 use crate::primitives::Vec3;
 

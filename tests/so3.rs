@@ -157,6 +157,23 @@ proptest! {
     }
 
     #[test]
+    fn to_matrix_acts_like_rotation(r in arb_so3(), x in -10.0..10.0f64, y in -10.0..10.0f64, z in -10.0..10.0f64) {
+        let m = r.to_matrix();
+        let v: Vector3<A> = Vector3::new(x, y, z);
+
+        let via_matrix = [
+            m[0][0] * v.x() + m[0][1] * v.y() + m[0][2] * v.z(),
+            m[1][0] * v.x() + m[1][1] * v.y() + m[1][2] * v.z(),
+            m[2][0] * v.x() + m[2][1] * v.y() + m[2][2] * v.z(),
+        ];
+        let via_act = r.act(v);
+
+        prop_assert!(abs_diff_eq!(via_matrix[0], via_act.x(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(via_matrix[1], via_act.y(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(via_matrix[2], via_act.z(), epsilon = EPS));
+    }
+
+    #[test]
     fn from_quat_preserves_rotation(q in arb_unit_quat(), x in -10.0..10.0f64, y in -10.0..10.0f64, z in -10.0..10.0f64) {
         let r: SO3<A, B> = SO3::from_quat(q);
         let v: Vector3<A> = Vector3::new(x, y, z);

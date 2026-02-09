@@ -3,7 +3,7 @@ use crate::primitives::{Quat, Vec3};
 use num_traits::Float;
 use std::fmt;
 use std::marker::PhantomData;
-use std::ops::{Add, Mul, Neg, Sub};
+use std::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
 
 /// 3D rotation (element of Special Orthogonal group).
 ///

@@ -57,22 +57,18 @@ impl<T, const N: usize> IndexMut<usize> for VecN<T, N> {
 impl<T: Float, const N: usize> Add for VecN<T, N> {
     type Output = Self;
     fn add(self, rhs: Self) -> Self {
-        let mut data = self.data;
-        for i in 0..N {
-            data[i] = self.data[i] + rhs.data[i];
+        Self {
+            data: std::array::from_fn(|i| self.data[i] + rhs.data[i]),
         }
-        Self { data }
     }
 }
 
 impl<T: Float, const N: usize> Sub for VecN<T, N> {
     type Output = Self;
     fn sub(self, rhs: Self) -> Self {
-        let mut data = self.data;
-        for i in 0..N {
-            data[i] = self.data[i] - rhs.data[i];
+        Self {
+            data: std::array::from_fn(|i| self.data[i] - rhs.data[i]),
         }
-        Self { data }
     }
 }
 
@@ -80,11 +76,9 @@ impl<T: Float, const N: usize> Sub for VecN<T, N> {
 impl<T: Float, const N: usize> Mul<VecN<T, N>> for VecN<T, N> {
     type Output = Self;
     fn mul(self, rhs: VecN<T, N>) -> Self {
-        let mut data = self.data;
-        for i in 0..N {
-            data[i] = self.data[i] * rhs.data[i];
+        Self {
+            data: std::array::from_fn(|i| self.data[i] * rhs.data[i]),
         }
-        Self { data }
     }
 }
 
@@ -93,11 +87,10 @@ impl<T: Float, const N: usize> Mul<VecN<T, N>> for VecN<T, N> {
 impl<T: Float, const N: usize> Mul<T> for VecN<T, N> {
     type Output = Self;
     fn mul(self, rhs: T) -> Self {
-        let mut data = self.data;
-        for i in 0..N {
-            data[i] = self.data[i] * rhs;
+        Self {
+            data: std::array::from_fn(|i| self.data[i] * rhs),
         }
-        Self { data }
+
     }
 }
 
@@ -158,18 +151,6 @@ impl<T: Float> VecN<T, 3> {
 
     pub fn xyz(&self) -> &[T; 3] {
         &self.data
-    }
-}
-
-impl<T: Float> From<(T, T, T)> for VecN<T, 3> {
-    fn from((x, y, z): (T, T, T)) -> Self {
-        Self { data: [x, y, z] }
-    }
-}
-
-impl<T: Float> From<VecN<T, 3>> for (T, T, T) {
-    fn from(v: VecN<T, 3>) -> (T, T, T) {
-        (v.data[0], v.data[1], v.data[2])
     }
 }
 
