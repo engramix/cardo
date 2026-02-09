@@ -234,7 +234,18 @@ macro_rules! impl_framed_vector_ops {
         // Debug
         impl<$($phantom,)+ T: Float + std::fmt::Debug> std::fmt::Debug for $Type<$($phantom,)+ T> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, "{}{:?}", std::any::type_name::<Self>().split('<').next().unwrap_or(""), self.vec.coeffs())
+                // Strip module paths: "crate::module::Type" -> "Type"
+                fn short_name(full: &str) -> String {
+                    full.split('<')
+                        .map(|part| part.rsplit("::").next().unwrap_or(part))
+                        .collect::<Vec<_>>()
+                        .join("<")
+                }
+                let name = short_name(std::any::type_name::<Self>());
+                // Remove trailing ", f64>" or ", f32>" from type name
+                let name = name.trim_end_matches(", f64>").trim_end_matches(", f32>");
+                let name = if !name.ends_with('>') { format!("{}>", name) } else { name.to_string() };
+                write!(f, "{}{:?}", name, self.vec.coeffs())
             }
         }
     };

@@ -19,15 +19,12 @@ pub struct SO3<A, B, T: Float = f64> {
 impl<A, B, T: Float + fmt::Debug> fmt::Debug for SO3<A, B, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let (w, x, y, z) = self.quat.wxyz();
+        let name_a = std::any::type_name::<A>().rsplit("::").next().unwrap_or("");
+        let name_b = std::any::type_name::<B>().rsplit("::").next().unwrap_or("");
         write!(
             f,
-            "SO3<{}, {}>[{:?}, {:?}, {:?}, {:?}]",
-            std::any::type_name::<A>(),
-            std::any::type_name::<B>(),
-            w,
-            x,
-            y,
-            z
+            "SO3<{}, {}>(w={:?}, x={:?}, y={:?}, z={:?})",
+            name_a, name_b, w, x, y, z
         )
     }
 }
@@ -53,10 +50,8 @@ impl_framed_vector_ops!(SO3Tangent<A, B, C>, Vec3);
 
 impl<A, B, T: Float> SO3<A, B, T> {
     pub fn from_quat(quat: Quat<T>) -> Self {
-        assert!(
-            (quat.norm_squared() - T::one()).abs() < T::epsilon().sqrt(),
-            "quaternion must have unit norm"
-        );
+        let is_unit = (quat.norm_squared() - T::one()).abs() < T::epsilon().sqrt();
+        assert!(is_unit, "quaternion must have unit norm");
         Self {
             quat,
             _frames: PhantomData,
@@ -64,10 +59,8 @@ impl<A, B, T: Float> SO3<A, B, T> {
     }
 
     pub fn from_axis_angle(axis: &Vector3<A, T>, angle: T) -> Self {
-        assert!(
-            (axis.norm_squared() - T::one()).abs() < T::epsilon().sqrt(),
-            "axis must have unit norm"
-        );
+        let is_unit = (axis.norm_squared() - T::one()).abs() < T::epsilon().sqrt();
+        assert!(is_unit, "axis must have unit norm");
         let half = angle / (T::one() + T::one());
         let s = half.sin();
         Self::from_quat(Quat {
