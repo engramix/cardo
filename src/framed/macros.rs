@@ -109,7 +109,7 @@ macro_rules! impl_framed_vector_ops {
             }
 
             pub fn xyz(&self) -> &[T; 3] {
-                &self.vec.data
+                self.vec.xyz()
             }
         }
     };
@@ -140,13 +140,13 @@ macro_rules! impl_framed_vector_ops {
         impl<$($phantom,)+ T: Float> Index<usize> for $Type<$($phantom,)+ T> {
             type Output = T;
             fn index(&self, i: usize) -> &T {
-                &self.vec.data[i]
+                &self.vec[i]
             }
         }
 
         impl<$($phantom,)+ T: Float> IndexMut<usize> for $Type<$($phantom,)+ T> {
             fn index_mut(&mut self, i: usize) -> &mut T {
-                &mut self.vec.data[i]
+                &mut self.vec[i]
             }
         }
 
@@ -210,7 +210,31 @@ macro_rules! impl_framed_vector_ops {
             }
 
             pub fn coeffs(&self) -> &[T] {
-                &self.vec.data
+                self.vec.coeffs()
+            }
+        }
+
+        // PartialEq - compare only the vec, not the phantom
+        impl<$($phantom,)+ T: Float> PartialEq for $Type<$($phantom,)+ T> {
+            fn eq(&self, other: &Self) -> bool {
+                self.vec == other.vec
+            }
+        }
+
+        // Clone
+        impl<$($phantom,)+ T: Float> Clone for $Type<$($phantom,)+ T> {
+            fn clone(&self) -> Self {
+                *self
+            }
+        }
+
+        // Copy
+        impl<$($phantom,)+ T: Float> Copy for $Type<$($phantom,)+ T> {}
+
+        // Debug
+        impl<$($phantom,)+ T: Float + std::fmt::Debug> std::fmt::Debug for $Type<$($phantom,)+ T> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "{}{:?}", std::any::type_name::<Self>().split('<').next().unwrap_or(""), self.vec.coeffs())
             }
         }
     };

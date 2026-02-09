@@ -44,31 +44,9 @@ impl<A, B, T: Float> Clone for SO3<A, B, T> {
 ///
 /// `SO3Tangent<A, B, C>`:
 /// - Angular change (e.g. angular velocity) of frame A relative to frame B, expressed in frame C.
-#[derive(PartialEq)]
 pub struct SO3Tangent<A, B, C, T: Float = f64> {
     pub vec: Vec3<T>,
     pub(crate) _frames: PhantomData<(A, B, C)>,
-}
-
-impl<A, B, C, T: Float + fmt::Debug> fmt::Debug for SO3Tangent<A, B, C, T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "SO3Tangent<{}, {}, {}>{:?}",
-            std::any::type_name::<A>(),
-            std::any::type_name::<B>(),
-            std::any::type_name::<C>(),
-            self.vec.data
-        )
-    }
-}
-
-impl<A, B, C, T: Float> Copy for SO3Tangent<A, B, C, T> {}
-
-impl<A, B, C, T: Float> Clone for SO3Tangent<A, B, C, T> {
-    fn clone(&self) -> Self {
-        *self
-    }
 }
 
 impl_framed_vector_ops!(SO3Tangent<A, B, C>, Vec3);

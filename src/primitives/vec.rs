@@ -39,6 +39,10 @@ impl<T: Float, const N: usize> VecN<T, N> {
         data.iter_mut().for_each(|x| *x = *x / n);
         Self { data }
     }
+
+    pub fn coeffs(&self) -> &[T] {
+        &self.data
+    }
 }
 
 impl<T, const N: usize> Index<usize> for VecN<T, N> {
@@ -91,22 +95,6 @@ impl<T: Float, const N: usize> Mul<T> for VecN<T, N> {
             data: std::array::from_fn(|i| self.data[i] * rhs),
         }
 
-    }
-}
-
-// Scalar multiplication
-// scalar * vec
-impl<const N: usize> Mul<VecN<f64, N>> for f64 {
-    type Output = VecN<f64, N>;
-    fn mul(self, rhs: VecN<f64, N>) -> VecN<f64, N> {
-        rhs * self
-    }
-}
-
-impl<const N: usize> Mul<VecN<f32, N>> for f32 {
-    type Output = VecN<f32, N>;
-    fn mul(self, rhs: VecN<f32, N>) -> VecN<f32, N> {
-        rhs * self
     }
 }
 
