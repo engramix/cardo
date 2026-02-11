@@ -1,7 +1,8 @@
 # cardo
 
-[![Test](https://github.com/engramix/cardo/actions/workflows/test.yml/badge.svg)](https://github.com/engramix/cardo/actions/workflows/test.yml)
-[![codecov](https://codecov.io/gh/engramix/cardo/graph/badge.svg)](https://codecov.io/gh/engramix/cardo)
+<a href="https://github.com/engramix/cardo/actions/workflows/test.yml" target="_blank"><img src="https://github.com/engramix/cardo/actions/workflows/test.yml/badge.svg" alt="Test"></a>
+<a href="https://codecov.io/gh/engramix/cardo" target="_blank"><img src="https://codecov.io/gh/engramix/cardo/graph/badge.svg" alt="codecov"></a>
+<a href="https://github.com/engramix/cardo/blob/main/LICENSE" target="_blank"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
 
 Frame-safe geometry with compile-time guarantees
 

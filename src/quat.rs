@@ -1,6 +1,7 @@
 use num_traits::Float;
 use std::ops::Mul;
 
+#[must_use]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Quat<T = f64> {
     pub w: T,

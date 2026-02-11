@@ -10,6 +10,7 @@ use std::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
 /// `SO3<A, B>`:
 /// - Transforms vectors from frame A to frame B
 /// - Represents the orientation of frame A expressed in frame B
+#[must_use]
 #[derive(PartialEq)]
 pub struct SO3<A, B, T: Float = f64> {
     pub quat: Quat<T>,
@@ -41,6 +42,7 @@ impl<A, B, T: Float> Clone for SO3<A, B, T> {
 ///
 /// `SO3Tangent<A, B, C>`:
 /// - Angular change (e.g. angular velocity) of frame A relative to frame B, expressed in frame C.
+#[must_use]
 pub struct SO3Tangent<A, B, C, T: Float = f64> {
     pub data: [T; 3],
     _frames: PhantomData<(A, B, C)>,
@@ -123,16 +125,50 @@ impl<A, B, T: Float> SO3<A, B, T> {
         SO3::from_quat(self.quat.conjugate())
     }
 
-    pub fn compose<C>(self, rhs: SO3<C, A, T>) -> SO3<C, B, T> {
+    pub fn compose<C>(&self, rhs: SO3<C, A, T>) -> SO3<C, B, T> {
         SO3::from_quat(self.quat * rhs.quat)
     }
 
-    pub fn then<C>(self, lhs: SO3<B, C, T>) -> SO3<A, C, T> {
+    pub fn then<C>(&self, lhs: SO3<B, C, T>) -> SO3<A, C, T> {
         SO3::from_quat(lhs.quat * self.quat)
     }
 
     pub fn act(&self, v: Vector3<A, T>) -> Vector3<B, T> {
         Vector3::from_data(self.quat.rotate(&v.data))
+    }
+
+    /// Perturb a rotation in the local frame.
+    ///
+    /// # Examples
+    ///
+    /// Basic gyro integration
+    ///
+    /// ```
+    /// # use cardo::prelude::*;
+    /// struct Body;
+    /// struct World;
+    ///
+    /// let orientation: SO3<Body, World> = SO3::identity();
+    ///
+    /// let angvel: SO3Tangent<Body, Body, Body> = SO3Tangent::new(0.01, 0.1, 0.1);
+    /// let dt = 0.01;
+    ///
+    /// let updated = orientation.rplus(angvel * dt);
+    /// ```
+    pub fn rplus<C>(&self, rhs: SO3Tangent<C, A, C, T>) -> SO3<C, B, T> {
+        self.compose(SO3::exp(&rhs))
+    }
+
+    pub fn rminus<C>(&self, rhs: SO3<C, B, T>) -> SO3Tangent<A, C, A, T> {
+        rhs.inverse().compose(*self).log()
+    }
+
+    pub fn lplus<C>(&self, lhs: SO3Tangent<B, C, B, T>) -> SO3<A, C, T> {
+        self.then(SO3::exp(&lhs))
+    }
+
+    pub fn lminus<C>(&self, rhs: SO3<A, C, T>) -> SO3Tangent<C, B, C, T> {
+        self.compose(rhs.inverse()).log()
     }
 
     pub fn to_matrix(&self) -> [[T; 3]; 3] {

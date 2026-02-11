@@ -301,6 +301,76 @@ proptest! {
     }
 
     #[test]
+    fn rplus_rminus_roundtrip(q1 in arb_unit_quat(), q2 in arb_unit_quat()) {
+        // x.rplus(y.rminus(x)) ≈ y
+        let x: SO3<A, B> = SO3::from_quat(q1);
+        let y: SO3<C, B> = SO3::from_quat(q2);
+        let result = x.rplus(y.rminus(x));
+        prop_assert!(quat_approx_eq(&result.quat, &y.quat));
+    }
+
+    #[test]
+    fn lplus_lminus_roundtrip(q1 in arb_unit_quat(), q2 in arb_unit_quat()) {
+        // y.lplus(x.lminus(y)) ≈ x
+        let x: SO3<A, B> = SO3::from_quat(q1);
+        let y: SO3<A, C> = SO3::from_quat(q2);
+        let result = y.lplus(x.lminus(y));
+        prop_assert!(quat_approx_eq(&result.quat, &x.quat));
+    }
+
+    #[test]
+    fn rminus_self_is_zero(r in arb_so3()) {
+        // x.rminus(x) ≈ 0
+        let delta = r.rminus(r);
+        prop_assert!(abs_diff_eq!(delta.norm(), 0.0, epsilon = EPS));
+    }
+
+    #[test]
+    fn lminus_self_is_zero(r in arb_so3()) {
+        // x.lminus(x) ≈ 0
+        let delta = r.lminus(r);
+        prop_assert!(abs_diff_eq!(delta.norm(), 0.0, epsilon = EPS));
+    }
+
+    #[test]
+    fn rplus_zero_is_identity(r in arb_so3()) {
+        // x.rplus(0) ≈ x
+        let zero: SO3Tangent<A, A, A> = SO3Tangent::zero();
+        let result = r.rplus(zero);
+        prop_assert!(quat_approx_eq(&result.quat, &r.quat));
+    }
+
+    #[test]
+    fn lplus_zero_is_identity(r in arb_so3()) {
+        // x.lplus(0) ≈ x
+        let zero: SO3Tangent<B, B, B> = SO3Tangent::zero();
+        let result = r.lplus(zero);
+        prop_assert!(quat_approx_eq(&result.quat, &r.quat));
+    }
+
+    #[test]
+    fn rplus_n_steps_reaches_target(q in arb_unit_quat(), n in 2..50i32) {
+        // Split rminus into N equal steps, rplus N times → reach target
+        let target: SO3<A, A> = SO3::from_quat(q);
+        let id: SO3<A, A> = SO3::identity();
+        let delta = target.rminus(id);
+        let step = delta * (1.0 / n as f64);
+        let result = (0..n).fold(id, |acc, _| acc.rplus(step));
+        prop_assert!(quat_approx_eq(&result.quat, &target.quat));
+    }
+
+    #[test]
+    fn lplus_n_steps_reaches_target(q in arb_unit_quat(), n in 2..50i32) {
+        // Split lminus into N equal steps, lplus N times → reach target
+        let target: SO3<A, A> = SO3::from_quat(q);
+        let id: SO3<A, A> = SO3::identity();
+        let delta = target.lminus(id);
+        let step = delta * (1.0 / n as f64);
+        let result = (0..n).fold(id, |acc, _| acc.lplus(step));
+        prop_assert!(quat_approx_eq(&result.quat, &target.quat));
+    }
+
+    #[test]
     fn axis_angle_log_consistency(axis in arb_unit_axis(), angle in -PI..PI) {
         // log(from_axis_angle(axis, θ)) ≈ θ * axis
         let r: SO3<A, B> = SO3::from_axis_angle(&axis, angle);
