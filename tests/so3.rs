@@ -7,6 +7,7 @@ struct A;
 struct B;
 struct C;
 struct D;
+struct E;
 
 const EPS: f64 = 1e-10;
 
@@ -161,11 +162,7 @@ proptest! {
         let m = r.to_matrix();
         let v: Vector3<A> = Vector3::new(x, y, z);
 
-        let via_matrix = [
-            m[0][0] * v.x() + m[0][1] * v.y() + m[0][2] * v.z(),
-            m[1][0] * v.x() + m[1][1] * v.y() + m[1][2] * v.z(),
-            m[2][0] * v.x() + m[2][1] * v.y() + m[2][2] * v.z(),
-        ];
+        let via_matrix = m * v.data;
         let via_act = r.act(v);
 
         prop_assert!(abs_diff_eq!(via_matrix[0], via_act.x(), epsilon = EPS));
@@ -397,6 +394,70 @@ proptest! {
         let total = start.between(end).log().norm();
         let partial = start.between(SO3::slerp(start, end, t)).log().norm();
         prop_assert!(abs_diff_eq!(partial, t * total, epsilon = EPS));
+    }
+
+    // Ad_X(v) = log(X_rhs * exp(v) * X_lhs^{-1})
+    #[test]
+    fn adjoint_is_conjugation(q in arb_unit_quat(), v in arb_tangent()) {
+        let x_lhs: SO3<A, B> = SO3::from_quat(q);
+        let x_rhs: SO3<B, E> = SO3::from_quat(q);
+        let adj_v = x_rhs.adjoint(v);
+        let conjugated = x_rhs.compose(SO3::exp(&v)).compose(x_lhs.inverse()).log();
+        prop_assert!(abs_diff_eq!(adj_v.x(), conjugated.x(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(adj_v.y(), conjugated.y(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(adj_v.z(), conjugated.z(), epsilon = EPS));
+    }
+
+    // identity adjoint is a no-op
+    #[test]
+    fn adjoint_identity_is_noop(v in arb_tangent()) {
+        let id: SO3<B, E> = SO3::identity();
+        let adj_v = id.adjoint(v);
+        prop_assert!(abs_diff_eq!(adj_v.x(), v.x(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(adj_v.y(), v.y(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(adj_v.z(), v.z(), epsilon = EPS));
+    }
+
+    // R * tangent re-expresses the tangent: SO3<A,B> * SO3Tangent<X,Y,A> -> SO3Tangent<X,Y,B>
+    #[test]
+    fn mul_tangent_reexpresses(q in arb_unit_quat(), v in arb_tangent()) {
+        let r: SO3<A, B> = SO3::from_quat(q);
+        let reexpressed = r * v;
+        // Norm is preserved (rotation doesn't change magnitude)
+        prop_assert!(abs_diff_eq!(reexpressed.norm(), v.norm(), epsilon = EPS));
+    }
+
+    // Re-expressing with identity is a no-op
+    #[test]
+    fn mul_tangent_identity_is_noop(v in arb_tangent()) {
+        let id: SO3<A, B> = SO3::identity();
+        let result = id * v;
+        prop_assert!(abs_diff_eq!(result.x(), v.x(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(result.y(), v.y(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(result.z(), v.z(), epsilon = EPS));
+    }
+
+    // Re-expressing with inverse undoes re-expression
+    #[test]
+    fn mul_tangent_inverse_roundtrip(q in arb_unit_quat(), v in arb_tangent()) {
+        let r: SO3<A, B> = SO3::from_quat(q);
+        let r_inv: SO3<B, A> = r.inverse();
+        let roundtrip = r_inv * (r * v);
+        prop_assert!(abs_diff_eq!(roundtrip.x(), v.x(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(roundtrip.y(), v.y(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(roundtrip.z(), v.z(), epsilon = EPS));
+    }
+
+    // Re-expressing tangent is consistent with rotating a vector with the same data
+    #[test]
+    fn mul_tangent_consistent_with_vector(q in arb_unit_quat(), v in arb_tangent()) {
+        let r: SO3<A, B> = SO3::from_quat(q);
+        let vec: Vector3<A> = Vector3::new(v.x(), v.y(), v.z());
+        let reexpressed = r * v;
+        let rotated = r * vec;
+        prop_assert!(abs_diff_eq!(reexpressed.x(), rotated.x(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(reexpressed.y(), rotated.y(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(reexpressed.z(), rotated.z(), epsilon = EPS));
     }
 
     #[test]

@@ -1,3 +1,4 @@
+use crate::mat::Mat3;
 use crate::quat::Quat;
 use crate::vector3::Vector3;
 use num_traits::Float;
@@ -87,6 +88,23 @@ impl<A, B, T: Float> SO3<A, B, T> {
 
     pub fn rot_z(angle: T) -> Self {
         Self::from_axis_angle(&Vector3::unit_z(), angle)
+    }
+
+    /// Spherical linear interpolation between two rotations.
+    ///
+    /// ```
+    /// # use cardo::prelude::*;
+    /// struct Cam;
+    /// struct World;
+    ///
+    /// let start: SO3<Cam, World> = SO3::identity();
+    /// let end: SO3<Cam, World> = SO3::rot_z(1.0);
+    ///
+    /// let mid = SO3::slerp(start, end, 0.5);
+    /// ```
+    pub fn slerp(start: SO3<A, B, T>, end: SO3<A, B, T>, t: T) -> SO3<A, B, T> {
+        let delta = start.between(end).log();
+        start.rplus(delta * t)
     }
 
     pub fn exp(v: &SO3Tangent<A, B, A, T>) -> Self {
@@ -188,27 +206,19 @@ impl<A, B, T: Float> SO3<A, B, T> {
         self.inverse().compose(other)
     }
 
-    /// Spherical linear interpolation between two rotations.
-    ///
-    /// ```
-    /// # use cardo::prelude::*;
-    /// struct Cam;
-    /// struct World;
-    ///
-    /// let start: SO3<Cam, World> = SO3::identity();
-    /// let end: SO3<Cam, World> = SO3::rot_z(1.0);
-    ///
-    /// let mid = SO3::slerp(start, end, 0.5);
-    /// ```
-    pub fn slerp(start: SO3<A, B, T>, end: SO3<A, B, T>, t: T) -> SO3<A, B, T> {
-        let delta = start.between(end).log();
-        start.rplus(delta * t)
+    pub fn adjoint<C>(&self, v: SO3Tangent<C, A, C, T>) -> SO3Tangent<A, B, A, T> {
+        // NOTE: exp(tau<B, E, B>) * X_lhs<A, B> = X_rhs<B, E> * exp(tau<A, B, A>)
+        SO3Tangent::from_data(self.adjoint_matrix() * v.data)
     }
 
-    pub fn to_matrix(&self) -> [[T; 3]; 3] {
+    pub fn adjoint_matrix(&self) -> Mat3<T> {
+        self.to_matrix()
+    }
+
+    pub fn to_matrix(&self) -> Mat3<T> {
         let Quat { w, x, y, z } = self.quat;
         let two = T::one() + T::one();
-        [
+        Mat3::from_data([
             [
                 T::one() - two * (y * y + z * z),
                 two * (x * y - w * z),
@@ -224,7 +234,7 @@ impl<A, B, T: Float> SO3<A, B, T> {
                 two * (y * z + w * x),
                 T::one() - two * (x * x + y * y),
             ],
-        ]
+        ])
     }
 }
 
@@ -241,5 +251,13 @@ impl<A, B, T: Float> Mul<Vector3<A, T>> for SO3<A, B, T> {
     type Output = Vector3<B, T>;
     fn mul(self, rhs: Vector3<A, T>) -> Vector3<B, T> {
         self.act(rhs)
+    }
+}
+
+// Re-express tangent: SO3<A,B> * SO3Tangent<X,Y,A> -> SO3Tangent<X,Y,B>
+impl<A, B, X, Y, T: Float> Mul<SO3Tangent<X, Y, A, T>> for SO3<A, B, T> {
+    type Output = SO3Tangent<X, Y, B, T>;
+    fn mul(self, rhs: SO3Tangent<X, Y, A, T>) -> SO3Tangent<X, Y, B, T> {
+        SO3Tangent::from_data(self.quat.rotate(&rhs.data))
     }
 }

@@ -13,3 +13,6 @@ help: the following other types implement trait `Mul<Rhs>`
 ...
    | impl<A, B, T: Float> Mul<Vector3<A, T>> for SO3<A, B, T> {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `cardo::SO3<A, B, T>` implements `Mul<cardo::Vector3<A, T>>`
+...
+   | impl<A, B, X, Y, T: Float> Mul<SO3Tangent<X, Y, A, T>> for SO3<A, B, T> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `cardo::SO3<A, B, T>` implements `Mul<SO3Tangent<X, Y, A, T>>`
