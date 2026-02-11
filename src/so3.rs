@@ -77,6 +77,18 @@ impl<A, B, T: Float> SO3<A, B, T> {
         Self::from_quat(Quat::identity())
     }
 
+    pub fn rot_x(angle: T) -> Self {
+        Self::from_axis_angle(&Vector3::unit_x(), angle)
+    }
+
+    pub fn rot_y(angle: T) -> Self {
+        Self::from_axis_angle(&Vector3::unit_y(), angle)
+    }
+
+    pub fn rot_z(angle: T) -> Self {
+        Self::from_axis_angle(&Vector3::unit_z(), angle)
+    }
+
     pub fn exp(v: &SO3Tangent<A, B, A, T>) -> Self {
         let angle = v.dot(v).sqrt();
 
@@ -169,6 +181,28 @@ impl<A, B, T: Float> SO3<A, B, T> {
 
     pub fn lminus<C>(&self, rhs: SO3<A, C, T>) -> SO3Tangent<C, B, C, T> {
         self.compose(rhs.inverse()).log()
+    }
+
+    /// Relative rotation of `other` wrt `self`
+    pub fn between<C>(&self, other: SO3<C, B, T>) -> SO3<C, A, T> {
+        self.inverse().compose(other)
+    }
+
+    /// Spherical linear interpolation between two rotations.
+    ///
+    /// ```
+    /// # use cardo::prelude::*;
+    /// struct Cam;
+    /// struct World;
+    ///
+    /// let start: SO3<Cam, World> = SO3::identity();
+    /// let end: SO3<Cam, World> = SO3::rot_z(1.0);
+    ///
+    /// let mid = SO3::slerp(start, end, 0.5);
+    /// ```
+    pub fn slerp(start: SO3<A, B, T>, end: SO3<A, B, T>, t: T) -> SO3<A, B, T> {
+        let delta = start.between(end).log();
+        start.rplus(delta * t)
     }
 
     pub fn to_matrix(&self) -> [[T; 3]; 3] {

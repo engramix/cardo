@@ -370,6 +370,35 @@ proptest! {
         prop_assert!(quat_approx_eq(&result.quat, &target.quat));
     }
 
+    // slerp(r, r, t) = r for all t
+    #[test]
+    fn slerp_same_rotation(q in arb_unit_quat(), t in 0.0..1.0f64) {
+        let r: SO3<A, B> = SO3::from_quat(q);
+        let result = SO3::slerp(r, r, t);
+        prop_assert!(quat_approx_eq(&result.quat, &r.quat));
+    }
+
+    // slerp(start, end, t) = slerp(end, start, 1 - t)
+    #[test]
+    fn slerp_reverse(q1 in arb_unit_quat(), q2 in arb_unit_quat(), t in 0.0..1.0f64) {
+        let start: SO3<A, B> = SO3::from_quat(q1);
+        let end: SO3<A, B> = SO3::from_quat(q2);
+        let forward = SO3::slerp(start, end, t);
+        let backward = SO3::slerp(end, start, 1.0 - t);
+        prop_assert!(quat_approx_eq(&forward.quat, &backward.quat));
+    }
+
+    // Slerp traverses the geodesic at constant speed: the angle covered
+    // after fraction t should be exactly t times the total angle.
+    #[test]
+    fn slerp_constant_velocity(q1 in arb_unit_quat(), q2 in arb_unit_quat(), t in 0.0..1.0f64) {
+        let start: SO3<A, B> = SO3::from_quat(q1);
+        let end: SO3<A, B> = SO3::from_quat(q2);
+        let total = start.between(end).log().norm();
+        let partial = start.between(SO3::slerp(start, end, t)).log().norm();
+        prop_assert!(abs_diff_eq!(partial, t * total, epsilon = EPS));
+    }
+
     #[test]
     fn axis_angle_log_consistency(axis in arb_unit_axis(), angle in -PI..PI) {
         // log(from_axis_angle(axis, θ)) ≈ θ * axis
@@ -430,6 +459,34 @@ fn rotate_90_about_y() {
     let result = r.act(v);
     assert!(abs_diff_eq!(result.x(), 1.0, epsilon = EPS));
     assert!(abs_diff_eq!(result.y(), 0.0, epsilon = EPS));
+    assert!(abs_diff_eq!(result.z(), 0.0, epsilon = EPS));
+}
+
+// Right-hand rule: rot_x maps y→z, rot_y maps z→x, rot_z maps x→y
+#[test]
+fn rot_x_maps_y_to_z() {
+    let r: SO3<A, B> = SO3::rot_x(FRAC_PI_2);
+    let result = r.act(Vector3::unit_y());
+    assert!(abs_diff_eq!(result.x(), 0.0, epsilon = EPS));
+    assert!(abs_diff_eq!(result.y(), 0.0, epsilon = EPS));
+    assert!(abs_diff_eq!(result.z(), 1.0, epsilon = EPS));
+}
+
+#[test]
+fn rot_y_maps_z_to_x() {
+    let r: SO3<A, B> = SO3::rot_y(FRAC_PI_2);
+    let result = r.act(Vector3::unit_z());
+    assert!(abs_diff_eq!(result.x(), 1.0, epsilon = EPS));
+    assert!(abs_diff_eq!(result.y(), 0.0, epsilon = EPS));
+    assert!(abs_diff_eq!(result.z(), 0.0, epsilon = EPS));
+}
+
+#[test]
+fn rot_z_maps_x_to_y() {
+    let r: SO3<A, B> = SO3::rot_z(FRAC_PI_2);
+    let result = r.act(Vector3::unit_x());
+    assert!(abs_diff_eq!(result.x(), 0.0, epsilon = EPS));
+    assert!(abs_diff_eq!(result.y(), 1.0, epsilon = EPS));
     assert!(abs_diff_eq!(result.z(), 0.0, epsilon = EPS));
 }
 
@@ -518,6 +575,23 @@ fn chain_both_directions_equivalent() {
     let right_to_left: SO3<A, D> = chain!(r3 <- r2 <- r1);
 
     assert!(quat_approx_eq(&left_to_right.quat, &right_to_left.quat));
+}
+
+// Slerp boundary conditions
+#[test]
+fn slerp_t0_is_start() {
+    let start: SO3<A, B> = SO3::from_axis_angle(&Vector3::new(1.0, 0.0, 0.0), 0.5);
+    let end: SO3<A, B> = SO3::from_axis_angle(&Vector3::new(0.0, 1.0, 0.0), 1.0);
+    let result = SO3::slerp(start, end, 0.0);
+    assert!(quat_approx_eq(&result.quat, &start.quat));
+}
+
+#[test]
+fn slerp_t1_is_end() {
+    let start: SO3<A, B> = SO3::from_axis_angle(&Vector3::new(1.0, 0.0, 0.0), 0.5);
+    let end: SO3<A, B> = SO3::from_axis_angle(&Vector3::new(0.0, 1.0, 0.0), 1.0);
+    let result = SO3::slerp(start, end, 1.0);
+    assert!(quat_approx_eq(&result.quat, &end.quat));
 }
 
 // Tests for panic on non-unit inputs

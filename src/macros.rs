@@ -262,6 +262,18 @@ macro_rules! impl_framed_vector {
             pub fn xyz(&self) -> &[T; 3] {
                 &self.data
             }
+
+            pub fn unit_x() -> Self {
+                Self::new(T::one(), T::zero(), T::zero())
+            }
+
+            pub fn unit_y() -> Self {
+                Self::new(T::zero(), T::one(), T::zero())
+            }
+
+            pub fn unit_z() -> Self {
+                Self::new(T::zero(), T::zero(), T::one())
+            }
         }
     };
 

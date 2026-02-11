@@ -62,6 +62,17 @@ fn cross() {
     assert_eq!(c.xyz(), &[0.0, 0.0, 1.0]);
 }
 
+// x × y = z, y × z = x, z × x = y
+#[test]
+fn cross_unit_axes_cyclic() {
+    let x: Vector3<F> = Vector3::unit_x();
+    let y: Vector3<F> = Vector3::unit_y();
+    let z: Vector3<F> = Vector3::unit_z();
+    assert_eq!(x.cross(&y), z);
+    assert_eq!(y.cross(&z), x);
+    assert_eq!(z.cross(&x), y);
+}
+
 #[test]
 fn norm() {
     let a: Vector3<F> = Vector3::new(3.0, 4.0, 0.0);
