@@ -114,19 +114,10 @@ impl<A, B, T: Float> SE3<A, B, T> {
         Self::from_vec([T::zero(), T::zero(), d])
     }
 
-    pub fn slerp(start: SE3<A, B, T>, end: SE3<A, B, T>, t: T) -> SE3<A, B, T> {
-        let delta = start.between(end).log();
-        start.rplus(delta * t)
-    }
-
     pub fn inverse(&self) -> SE3<B, A, T> {
         let q_inv = self.quat.conjugate();
         let t_inv = q_inv.rotate(std::array::from_fn(|i| -self.vec[i]));
         SE3::from_vec_quat(t_inv, q_inv)
-    }
-
-    pub fn inverse_with_jac(&self) -> (SE3<B, A, T>, Mat6<T>) {
-        (self.inverse(), -self.adjoint_matrix())
     }
 
     pub fn compose<C>(&self, rhs: SE3<C, A, T>) -> SE3<C, B, T> {
@@ -137,51 +128,9 @@ impl<A, B, T: Float> SE3<A, B, T> {
         )
     }
 
-    pub fn compose_with_jac<C>(&self, rhs: SE3<C, A, T>) -> (SE3<C, B, T>, Mat6<T>, Mat6<T>) {
-        (
-            self.compose(rhs),
-            rhs.inverse().adjoint_matrix(),
-            Mat6::identity(),
-        )
-    }
-
-    pub fn then<C>(&self, lhs: SE3<B, C, T>) -> SE3<A, C, T> {
-        let rot_t = lhs.quat.rotate(self.vec);
-        SE3::from_vec_quat(
-            std::array::from_fn(|i| lhs.vec[i] + rot_t[i]),
-            lhs.quat * self.quat,
-        )
-    }
-
     pub fn log(&self) -> SE3Tangent<A, B, A, T> {
         let so3_tangent = SO3::<A, B, T>::from_quat(self.quat).log();
         SE3Tangent::from_lin_ang(so3_tangent.ljacinv() * self.vec, so3_tangent.data)
-    }
-
-    pub fn rplus<C>(&self, rhs: SE3Tangent<C, A, C, T>) -> SE3<C, B, T> {
-        self.compose(rhs.exp())
-    }
-
-    pub fn rminus<C>(&self, rhs: SE3<C, B, T>) -> SE3Tangent<A, C, A, T> {
-        rhs.inverse().compose(*self).log()
-    }
-
-    pub fn lplus<C>(&self, lhs: SE3Tangent<B, C, B, T>) -> SE3<A, C, T> {
-        self.then(lhs.exp())
-    }
-
-    pub fn lminus<C>(&self, rhs: SE3<A, C, T>) -> SE3Tangent<C, B, C, T> {
-        self.compose(rhs.inverse()).log()
-    }
-
-    /// Relative rotation and translation of `other` wrt `self`
-    pub fn between<C>(&self, other: SE3<C, B, T>) -> SE3<C, A, T> {
-        self.inverse().compose(other)
-    }
-
-    pub fn adjoint<C>(&self, v: SE3Tangent<C, A, C, T>) -> SE3Tangent<A, B, A, T> {
-        // NOTE: exp(tau<B, E, B>) * X_lhs<A, B> = X_rhs<B, E> * exp(tau<A, B, A>)
-        SE3Tangent::from_data(self.adjoint_matrix() * v.data)
     }
 
     pub fn adjoint_matrix(&self) -> Mat6<T> {
@@ -204,28 +153,12 @@ impl<A, B, T: Float> SE3<A, B, T> {
     }
 }
 
-// Compose: SE3<A,B> * SE3<C,A> -> SE3<C,B>
-impl<A, B, C, T: Float> Mul<SE3<C, A, T>> for SE3<A, B, T> {
-    type Output = SE3<C, B, T>;
-    fn mul(self, rhs: SE3<C, A, T>) -> SE3<C, B, T> {
-        self.compose(rhs)
-    }
-}
-
 // Act on Vector3: SE3<A,B> * Vector3<A> -> Vector3<B>
 impl<A, B, T: Float> Act<Vector3<A, T>> for SE3<A, B, T> {
     type Output = Vector3<B, T>;
     fn act(&self, v: Vector3<A, T>) -> Vector3<B, T> {
         let r = self.quat.rotate(v.data);
         Vector3::from_data(std::array::from_fn(|i| r[i] + self.vec[i]))
-    }
-}
-
-
-impl<A, B, T: Float> Mul<Vector3<A, T>> for SE3<A, B, T> {
-    type Output = Vector3<B, T>;
-    fn mul(self, rhs: Vector3<A, T>) -> Vector3<B, T> {
-        self.act(rhs)
     }
 }
 
@@ -269,9 +202,4 @@ impl<A, B, X, Y, T: Float> ActWithJac<SE3Tangent<X, Y, A, T>> for SE3<A, B, T> {
     }
 }
 
-impl<A, B, X, Y, T: Float> Mul<SE3Tangent<X, Y, A, T>> for SE3<A, B, T> {
-    type Output = SE3Tangent<X, Y, B, T>;
-    fn mul(self, rhs: SE3Tangent<X, Y, A, T>) -> SE3Tangent<X, Y, B, T> {
-        self.act(rhs)
-    }
-}
+impl_lie_group!(Group = SE3, Tangent = SE3Tangent, AdjMat = Mat6);

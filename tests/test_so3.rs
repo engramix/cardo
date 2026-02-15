@@ -410,6 +410,40 @@ proptest! {
         prop_assert!(abs_diff_eq!(reexpressed.z(), rotated.z(), epsilon = EPS));
     }
 
+    // log_with_jac: result matches log
+    #[test]
+    fn log_with_jac_result(r in arb_so3()) {
+        let (result, _) = r.log_with_jac();
+        let expected = r.log();
+        prop_assert!(abs_diff_eq!(result.x(), expected.x(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(result.y(), expected.y(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(result.z(), expected.z(), epsilon = EPS));
+    }
+
+    // log_with_jac: numerical verification via right perturbation
+    #[test]
+    fn log_with_jac_numerical(r in arb_so3()) {
+        let (_, jac) = r.log_with_jac();
+        let h = 1e-7;
+        let eps = 1e-5;
+        let result = r.log();
+        for i in 0..3 {
+            let mut delta = [0.0; 3];
+            delta[i] = h;
+            let small: SO3<A, A> = SO3Tangent::<A, A, A>::from_data(delta).exp();
+            let r_pert: SO3<A, B> = r.compose(small);
+            let result_pert = r_pert.log();
+            for row in 0..3 {
+                let numerical = (result_pert.data[row] - result.data[row]) / h;
+                prop_assert!(
+                    abs_diff_eq!(jac.data[row][i], numerical, epsilon = eps),
+                    "log_jac mismatch at ({}, {}): analytic={}, numerical={}",
+                    row, i, jac.data[row][i], numerical
+                );
+            }
+        }
+    }
+
     // inverse_with_jac: result matches inverse
     #[test]
     fn inverse_with_jac_result_matches_inverse(r in arb_so3()) {
@@ -620,6 +654,254 @@ proptest! {
                     abs_diff_eq!(jac_group.data[row][i], numerical, epsilon = eps),
                     "J_group mismatch at ({}, {}): analytic={}, numerical={}",
                     row, i, jac_group.data[row][i], numerical
+                );
+            }
+        }
+    }
+
+    // rplus_with_jac: result matches rplus
+    #[test]
+    fn rplus_with_jac_result(r in arb_so3(), v in arb_tangent()) {
+        let v_a: SO3Tangent<C, A, C> = SO3Tangent::from_data(v.data);
+        let (result, _, _) = r.rplus_with_jac(v_a);
+        let expected = r.rplus(v_a);
+        prop_assert!(quat_approx_eq(&result.quat, &expected.quat));
+    }
+
+    // rplus_with_jac: J_self (numerical verification via right perturbation on r)
+    #[test]
+    fn rplus_with_jac_self(r in arb_so3(), v in arb_tangent()) {
+        let v_a: SO3Tangent<C, A, C> = SO3Tangent::from_data(v.data);
+        let (_, jac_self, _) = r.rplus_with_jac(v_a);
+        let h = 1e-7;
+        let eps = 1e-5;
+        let result = r.rplus(v_a);
+        for i in 0..3 {
+            let mut delta = [0.0; 3];
+            delta[i] = h;
+            let small: SO3<A, A> = SO3Tangent::<A, A, A>::from_data(delta).exp();
+            let r_pert: SO3<A, B> = r.compose(small);
+            let result_pert = r_pert.rplus(v_a);
+            let diff = result.inverse().compose(result_pert).log();
+            for row in 0..3 {
+                let numerical = diff.data[row] / h;
+                prop_assert!(
+                    abs_diff_eq!(jac_self.data[row][i], numerical, epsilon = eps),
+                    "rplus J_self mismatch at ({}, {}): analytic={}, numerical={}",
+                    row, i, jac_self.data[row][i], numerical
+                );
+            }
+        }
+    }
+
+    // rplus_with_jac: J_rhs (numerical verification via perturbation on tangent)
+    #[test]
+    fn rplus_with_jac_rhs(r in arb_so3(), v in arb_tangent()) {
+        let v_a: SO3Tangent<C, A, C> = SO3Tangent::from_data(v.data);
+        let (_, _, jac_rhs) = r.rplus_with_jac(v_a);
+        let h = 1e-7;
+        let eps = 1e-5;
+        let result = r.rplus(v_a);
+        for i in 0..3 {
+            let mut perturbed = v_a.data;
+            perturbed[i] += h;
+            let v_pert: SO3Tangent<C, A, C> = SO3Tangent::from_data(perturbed);
+            let result_pert = r.rplus(v_pert);
+            let diff = result.inverse().compose(result_pert).log();
+            for row in 0..3 {
+                let numerical = diff.data[row] / h;
+                prop_assert!(
+                    abs_diff_eq!(jac_rhs.data[row][i], numerical, epsilon = eps),
+                    "rplus J_rhs mismatch at ({}, {}): analytic={}, numerical={}",
+                    row, i, jac_rhs.data[row][i], numerical
+                );
+            }
+        }
+    }
+
+    // rminus_with_jac: result matches rminus
+    #[test]
+    fn rminus_with_jac_result(q1 in arb_unit_quat(), q2 in arb_unit_quat()) {
+        let r1: SO3<A, B> = SO3::from_quat(q1);
+        let r2: SO3<C, B> = SO3::from_quat(q2);
+        let (result, _, _) = r1.rminus_with_jac(r2);
+        let expected = r1.rminus(r2);
+        prop_assert!(abs_diff_eq!(result.x(), expected.x(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(result.y(), expected.y(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(result.z(), expected.z(), epsilon = EPS));
+    }
+
+    // rminus_with_jac: J_self (numerical verification via right perturbation on r1)
+    #[test]
+    fn rminus_with_jac_self(q1 in arb_unit_quat(), q2 in arb_unit_quat()) {
+        let r1: SO3<A, B> = SO3::from_quat(q1);
+        let r2: SO3<C, B> = SO3::from_quat(q2);
+        let (_, jac_self, _) = r1.rminus_with_jac(r2);
+        let h = 1e-7;
+        let eps = 1e-5;
+        let result = r1.rminus(r2);
+        for i in 0..3 {
+            let mut delta = [0.0; 3];
+            delta[i] = h;
+            let small: SO3<A, A> = SO3Tangent::<A, A, A>::from_data(delta).exp();
+            let r1_pert: SO3<A, B> = r1.compose(small);
+            let result_pert = r1_pert.rminus(r2);
+            for row in 0..3 {
+                let numerical = (result_pert.data[row] - result.data[row]) / h;
+                prop_assert!(
+                    abs_diff_eq!(jac_self.data[row][i], numerical, epsilon = eps),
+                    "rminus J_self mismatch at ({}, {}): analytic={}, numerical={}",
+                    row, i, jac_self.data[row][i], numerical
+                );
+            }
+        }
+    }
+
+    // rminus_with_jac: J_rhs (numerical verification via right perturbation on r2)
+    #[test]
+    fn rminus_with_jac_rhs(q1 in arb_unit_quat(), q2 in arb_unit_quat()) {
+        let r1: SO3<A, B> = SO3::from_quat(q1);
+        let r2: SO3<C, B> = SO3::from_quat(q2);
+        let (_, _, jac_rhs) = r1.rminus_with_jac(r2);
+        let h = 1e-7;
+        let eps = 1e-5;
+        let result = r1.rminus(r2);
+        for i in 0..3 {
+            let mut delta = [0.0; 3];
+            delta[i] = h;
+            let small: SO3<C, C> = SO3Tangent::<C, C, C>::from_data(delta).exp();
+            let r2_pert: SO3<C, B> = r2.compose(small);
+            let result_pert = r1.rminus(r2_pert);
+            for row in 0..3 {
+                let numerical = (result_pert.data[row] - result.data[row]) / h;
+                prop_assert!(
+                    abs_diff_eq!(jac_rhs.data[row][i], numerical, epsilon = eps),
+                    "rminus J_rhs mismatch at ({}, {}): analytic={}, numerical={}",
+                    row, i, jac_rhs.data[row][i], numerical
+                );
+            }
+        }
+    }
+
+    // lplus_with_jac: result matches lplus
+    #[test]
+    fn lplus_with_jac_result(r in arb_so3(), v in arb_tangent()) {
+        let v_b: SO3Tangent<B, C, B> = SO3Tangent::from_data(v.data);
+        let (result, _, _) = r.lplus_with_jac(v_b);
+        let expected = r.lplus(v_b);
+        prop_assert!(quat_approx_eq(&result.quat, &expected.quat));
+    }
+
+    // lplus_with_jac: J_self (numerical verification via right perturbation on r)
+    #[test]
+    fn lplus_with_jac_self(r in arb_so3(), v in arb_tangent()) {
+        let v_b: SO3Tangent<B, C, B> = SO3Tangent::from_data(v.data);
+        let (_, jac_self, _) = r.lplus_with_jac(v_b);
+        let h = 1e-7;
+        let eps = 1e-5;
+        let result = r.lplus(v_b);
+        for i in 0..3 {
+            let mut delta = [0.0; 3];
+            delta[i] = h;
+            let small: SO3<A, A> = SO3Tangent::<A, A, A>::from_data(delta).exp();
+            let r_pert: SO3<A, B> = r.compose(small);
+            let result_pert = r_pert.lplus(v_b);
+            let diff = result.inverse().compose(result_pert).log();
+            for row in 0..3 {
+                let numerical = diff.data[row] / h;
+                prop_assert!(
+                    abs_diff_eq!(jac_self.data[row][i], numerical, epsilon = eps),
+                    "lplus J_self mismatch at ({}, {}): analytic={}, numerical={}",
+                    row, i, jac_self.data[row][i], numerical
+                );
+            }
+        }
+    }
+
+    // lplus_with_jac: J_lhs (numerical verification via perturbation on tangent)
+    #[test]
+    fn lplus_with_jac_lhs(r in arb_so3(), v in arb_tangent()) {
+        let v_b: SO3Tangent<B, C, B> = SO3Tangent::from_data(v.data);
+        let (_, _, jac_lhs) = r.lplus_with_jac(v_b);
+        let h = 1e-7;
+        let eps = 1e-5;
+        let result = r.lplus(v_b);
+        for i in 0..3 {
+            let mut perturbed = v_b.data;
+            perturbed[i] += h;
+            let v_pert: SO3Tangent<B, C, B> = SO3Tangent::from_data(perturbed);
+            let result_pert = r.lplus(v_pert);
+            let diff = result.inverse().compose(result_pert).log();
+            for row in 0..3 {
+                let numerical = diff.data[row] / h;
+                prop_assert!(
+                    abs_diff_eq!(jac_lhs.data[row][i], numerical, epsilon = eps),
+                    "lplus J_lhs mismatch at ({}, {}): analytic={}, numerical={}",
+                    row, i, jac_lhs.data[row][i], numerical
+                );
+            }
+        }
+    }
+
+    // lminus_with_jac: result matches lminus
+    #[test]
+    fn lminus_with_jac_result(q1 in arb_unit_quat(), q2 in arb_unit_quat()) {
+        let r1: SO3<A, B> = SO3::from_quat(q1);
+        let r2: SO3<A, C> = SO3::from_quat(q2);
+        let (result, _, _) = r1.lminus_with_jac(r2);
+        let expected = r1.lminus(r2);
+        prop_assert!(abs_diff_eq!(result.x(), expected.x(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(result.y(), expected.y(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(result.z(), expected.z(), epsilon = EPS));
+    }
+
+    // lminus_with_jac: J_self (numerical verification via right perturbation on r1)
+    #[test]
+    fn lminus_with_jac_self(q1 in arb_unit_quat(), q2 in arb_unit_quat()) {
+        let r1: SO3<A, B> = SO3::from_quat(q1);
+        let r2: SO3<A, C> = SO3::from_quat(q2);
+        let (_, jac_self, _) = r1.lminus_with_jac(r2);
+        let h = 1e-7;
+        let eps = 1e-5;
+        let result = r1.lminus(r2);
+        for i in 0..3 {
+            let mut delta = [0.0; 3];
+            delta[i] = h;
+            let small: SO3<A, A> = SO3Tangent::<A, A, A>::from_data(delta).exp();
+            let r1_pert: SO3<A, B> = r1.compose(small);
+            let result_pert = r1_pert.lminus(r2);
+            for row in 0..3 {
+                let numerical = (result_pert.data[row] - result.data[row]) / h;
+                prop_assert!(
+                    abs_diff_eq!(jac_self.data[row][i], numerical, epsilon = eps),
+                    "lminus J_self mismatch at ({}, {}): analytic={}, numerical={}",
+                    row, i, jac_self.data[row][i], numerical
+                );
+            }
+        }
+    }
+
+    // lminus_with_jac: J_rhs (numerical verification via right perturbation on r2)
+    #[test]
+    fn lminus_with_jac_rhs(q1 in arb_unit_quat(), q2 in arb_unit_quat()) {
+        let r1: SO3<A, B> = SO3::from_quat(q1);
+        let r2: SO3<A, C> = SO3::from_quat(q2);
+        let (_, _, jac_rhs) = r1.lminus_with_jac(r2);
+        let h = 1e-7;
+        let eps = 1e-5;
+        let result = r1.lminus(r2);
+        for i in 0..3 {
+            let mut delta = [0.0; 3];
+            delta[i] = h;
+            let small: SO3<A, A> = SO3Tangent::<A, A, A>::from_data(delta).exp();
+            let r2_pert: SO3<A, C> = r2.compose(small);
+            let result_pert = r1.lminus(r2_pert);
+            for row in 0..3 {
+                let numerical = (result_pert.data[row] - result.data[row]) / h;
+                prop_assert!(
+                    abs_diff_eq!(jac_rhs.data[row][i], numerical, epsilon = eps),
+                    "lminus J_rhs mismatch at ({}, {}): analytic={}, numerical={}",
+                    row, i, jac_rhs.data[row][i], numerical
                 );
             }
         }
