@@ -315,6 +315,104 @@ proptest! {
         let product = tau.rjacinv() * tau.rjac();
         prop_assert!(mat3_approx_eq(&product, &Mat3::identity(), EPS));
     }
+
+    // ad
+
+    // compose (BCH)
+
+    #[test]
+    fn compose_zero_lhs(tau in arb_tangent()) {
+        // 0.bch_compose(τ) ≈ τ
+        let zero: SO3Tangent<A, B, A> = SO3Tangent::zero();
+        let result = zero.bch_compose(tau);
+        prop_assert!(abs_diff_eq!(result.x(), tau.x(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(result.y(), tau.y(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(result.z(), tau.z(), epsilon = EPS));
+    }
+
+    #[test]
+    fn compose_zero_rhs(tau in arb_tangent()) {
+        // τ.bch_compose(0) ≈ τ
+        let zero: SO3Tangent<A, B, A> = SO3Tangent::zero();
+        let result = tau.bch_compose(zero);
+        prop_assert!(abs_diff_eq!(result.x(), tau.x(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(result.y(), tau.y(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(result.z(), tau.z(), epsilon = EPS));
+    }
+
+    #[test]
+    fn compose_approximates_exact(tau1 in arb_tangent(), tau2 in arb_tangent()) {
+        // BCH should approximate log(exp(τ₁) · exp(τ₂))
+        // Accuracy is O(|τ|³), so scale down for a tighter bound
+        let s = 0.1;
+        let t1: SO3Tangent<A, A, A> = SO3Tangent::from_data(std::array::from_fn(|i| tau1.data[i] * s));
+        let t2: SO3Tangent<A, A, A> = SO3Tangent::from_data(std::array::from_fn(|i| tau2.data[i] * s));
+        let bch = t1.bch_compose(t2);
+        let exact = t1.exp().compose(t2.exp()).log();
+        // O(|τ|³) ≈ 0.1³ = 1e-3, so eps = 1e-2 is conservative
+        let eps = 1e-2;
+        prop_assert!(abs_diff_eq!(bch.x(), exact.x(), epsilon = eps));
+        prop_assert!(abs_diff_eq!(bch.y(), exact.y(), epsilon = eps));
+        prop_assert!(abs_diff_eq!(bch.z(), exact.z(), epsilon = eps));
+    }
+
+    #[test]
+    fn compose_with_negation_near_zero(tau in arb_tangent()) {
+        // τ.bch_compose(-τ) ≈ 0 (for small τ, exact at τ = 0)
+        let s = 0.1;
+        let t: SO3Tangent<A, A, A> = SO3Tangent::from_data(std::array::from_fn(|i| tau.data[i] * s));
+        let neg: SO3Tangent<A, A, A> = SO3Tangent::from_data(std::array::from_fn(|i| -t.data[i]));
+        let result = t.bch_compose(neg);
+        let eps = 1e-2;
+        prop_assert!(abs_diff_eq!(result.norm(), 0.0, epsilon = eps));
+    }
+
+    // ad
+
+    #[test]
+    fn ad_equals_hat(tau in arb_tangent()) {
+        // For SO3, ad(ω) = [ω]× = hat(ω)
+        let ad = tau.ad();
+        let hat = tau.hat();
+        prop_assert!(mat3_approx_eq(&ad, &hat, EPS));
+    }
+
+    #[test]
+    fn ad_zero_is_zero(_dummy in 0..1i32) {
+        let zero: SO3Tangent<A, B, A> = SO3Tangent::zero();
+        let ad = zero.ad();
+        prop_assert!(mat3_approx_eq(&ad, &Mat3::zeros(), EPS));
+    }
+
+    #[test]
+    fn ad_self_bracket_is_zero(tau in arb_tangent()) {
+        // ad(τ) · τ = [τ, τ] = 0 (cross product of a vector with itself)
+        let result = tau.ad() * tau.data;
+        prop_assert!(abs_diff_eq!(result[0], 0.0, epsilon = EPS));
+        prop_assert!(abs_diff_eq!(result[1], 0.0, epsilon = EPS));
+        prop_assert!(abs_diff_eq!(result[2], 0.0, epsilon = EPS));
+    }
+
+    #[test]
+    fn ad_antisymmetric(tau1 in arb_tangent(), tau2 in arb_tangent()) {
+        // ad(τ₁) · τ₂ = -ad(τ₂) · τ₁
+        let lhs = tau1.ad() * tau2.data;
+        let rhs = tau2.ad() * tau1.data;
+        prop_assert!(abs_diff_eq!(lhs[0], -rhs[0], epsilon = EPS));
+        prop_assert!(abs_diff_eq!(lhs[1], -rhs[1], epsilon = EPS));
+        prop_assert!(abs_diff_eq!(lhs[2], -rhs[2], epsilon = EPS));
+    }
+
+    #[test]
+    fn ad_jacobi_identity(tau1 in arb_tangent(), tau2 in arb_tangent(), tau3 in arb_tangent()) {
+        // ad(τ₁)·(ad(τ₂)·τ₃) + ad(τ₂)·(ad(τ₃)·τ₁) + ad(τ₃)·(ad(τ₁)·τ₂) = 0
+        let a = tau1.ad() * (tau2.ad() * tau3.data);
+        let b = tau2.ad() * (tau3.ad() * tau1.data);
+        let c = tau3.ad() * (tau1.ad() * tau2.data);
+        for i in 0..3 {
+            prop_assert!(abs_diff_eq!(a[i] + b[i] + c[i], 0.0, epsilon = EPS));
+        }
+    }
 }
 
 #[test]

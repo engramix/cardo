@@ -1,4 +1,4 @@
-use crate::act::Act;
+use crate::act::{Act, ActWithJac};
 use crate::mat::Mat3;
 use crate::quat::Quat;
 use crate::so3_tangent::SO3Tangent;
@@ -69,6 +69,51 @@ impl<A, B, T: Float> SO3<A, B, T> {
         })
     }
 
+    /// Minimal rotation that maps unit vector `a` to unit vector `b`.
+    ///
+    /// Both vectors must have unit norm.
+    pub fn from_two_vectors(a: &Vector3<A, T>, b: &Vector3<A, T>) -> Self {
+        let is_unit_a = (a.norm_squared() - T::one()).abs() < T::epsilon().sqrt();
+        let is_unit_b = (b.norm_squared() - T::one()).abs() < T::epsilon().sqrt();
+        assert!(is_unit_a, "a must have unit norm");
+        assert!(is_unit_b, "b must have unit norm");
+
+        let dot = a.dot(b);
+        let cross = a.cross(b);
+
+        if dot < -T::one() + T::epsilon().sqrt() {
+            // Opposite vectors: 180° rotation about any perpendicular axis.
+            // Cross with the basis vector least aligned with `a`.
+            let ax = a.x().abs();
+            let ay = a.y().abs();
+            let az = a.z().abs();
+            let perp: Vector3<A, T> = if ax <= ay && ax <= az {
+                Vector3::new(T::zero(), a.z(), -a.y())
+            } else if ay <= az {
+                Vector3::new(-a.z(), T::zero(), a.x())
+            } else {
+                Vector3::new(a.y(), -a.x(), T::zero())
+            };
+            let perp = perp.normalized();
+            Self::from_quat(Quat {
+                w: T::zero(),
+                x: perp.x(),
+                y: perp.y(),
+                z: perp.z(),
+            })
+        } else {
+            Self::from_quat(
+                Quat {
+                    w: T::one() + dot,
+                    x: cross.x(),
+                    y: cross.y(),
+                    z: cross.z(),
+                }
+                .normalized(),
+            )
+        }
+    }
+
     pub fn identity() -> Self {
         Self::from_quat(Quat::identity())
     }
@@ -106,8 +151,20 @@ impl<A, B, T: Float> SO3<A, B, T> {
         SO3::from_quat(self.quat.conjugate())
     }
 
+    pub fn inverse_with_jac(&self) -> (SO3<B, A, T>, Mat3<T>) {
+        (self.inverse(), -self.adjoint_matrix())
+    }
+
     pub fn compose<C>(&self, rhs: SO3<C, A, T>) -> SO3<C, B, T> {
         SO3::from_quat(self.quat * rhs.quat)
+    }
+
+    pub fn compose_with_jac<C>(&self, rhs: SO3<C, A, T>) -> (SO3<C, B, T>, Mat3<T>, Mat3<T>) {
+        (
+            self.compose(rhs),
+            rhs.adjoint_matrix().transpose(),
+            Mat3::identity(),
+        )
     }
 
     pub fn then<C>(&self, lhs: SO3<B, C, T>) -> SO3<A, C, T> {
@@ -222,18 +279,40 @@ impl<A, B, T: Float> Act<Vector3<A, T>> for SO3<A, B, T> {
     }
 }
 
-// Act on SO3Tangent: SO3<A,B> * SO3Tangent<X,Y,A> -> SO3Tangent<X,Y,B>
-impl<A, B, X, Y, T: Float> Act<SO3Tangent<X, Y, A, T>> for SO3<A, B, T> {
-    type Output = SO3Tangent<X, Y, B, T>;
-    fn act(&self, v: SO3Tangent<X, Y, A, T>) -> SO3Tangent<X, Y, B, T> {
-        SO3Tangent::from_data(self.quat.rotate(v.data))
-    }
-}
-
 impl<A, B, T: Float> Mul<Vector3<A, T>> for SO3<A, B, T> {
     type Output = Vector3<B, T>;
     fn mul(self, rhs: Vector3<A, T>) -> Vector3<B, T> {
         self.act(rhs)
+    }
+}
+
+impl<A, B, T: Float> ActWithJac<Vector3<A, T>> for SO3<A, B, T> {
+    type JacGroup = Mat3<T>;
+    type JacInput = Mat3<T>;
+    fn act_with_jac(&self, v: Vector3<A, T>) -> (Vector3<B, T>, Mat3<T>, Mat3<T>) {
+        let r = self.to_matrix();
+        (self.act(v), -r * Mat3::skew(v.data), r)
+    }
+}
+
+// Act on SO3Tangent: SO3<A,B> * SO3Tangent<X,Y,A> -> SO3Tangent<X,Y,B>
+impl<A, B, X, Y, T: Float> Act<SO3Tangent<X, Y, A, T>> for SO3<A, B, T> {
+    type Output = SO3Tangent<X, Y, B, T>;
+    fn act(&self, v: SO3Tangent<X, Y, A, T>) -> SO3Tangent<X, Y, B, T> {
+        // NOTE: Ad_R = R so ajoint is equivalent to act for SO3Tangent
+        SO3Tangent::from_data(self.quat.rotate(v.data))
+    }
+}
+
+impl<A, B, X, Y, T: Float> ActWithJac<SO3Tangent<X, Y, A, T>> for SO3<A, B, T> {
+    type JacGroup = Mat3<T>;
+    type JacInput = Mat3<T>;
+    fn act_with_jac(
+        &self,
+        v: SO3Tangent<X, Y, A, T>,
+    ) -> (SO3Tangent<X, Y, B, T>, Mat3<T>, Mat3<T>) {
+        let r = self.to_matrix();
+        (self.act(v), -r * Mat3::skew(v.data), r)
     }
 }
 

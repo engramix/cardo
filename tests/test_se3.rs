@@ -453,6 +453,257 @@ proptest! {
         prop_assert!(abs_diff_eq!(via_mul.vec[2], via_compose.vec[2], epsilon = EPS));
     }
 
+    // inverse_with_jac: result matches inverse
+    #[test]
+    fn inverse_with_jac_result(se3 in arb_se3()) {
+        let (result, _) = se3.inverse_with_jac();
+        let expected = se3.inverse();
+        prop_assert!(quat_approx_eq(&result.quat, &expected.quat));
+        for i in 0..3 {
+            prop_assert!(abs_diff_eq!(result.vec[i], expected.vec[i], epsilon = EPS));
+        }
+    }
+
+    // inverse_with_jac: numerical verification via right perturbation
+    // log(f(X)⁻¹ · f(X_pert)) = log(X · X_pert⁻¹) ≈ J · δ
+    #[test]
+    fn inverse_with_jac_numerical(se3 in arb_se3()) {
+        let (_, jac) = se3.inverse_with_jac();
+        let h = 1e-7;
+        let eps = 1e-5;
+        for i in 0..6 {
+            let mut delta = [0.0; 6];
+            delta[i] = h;
+            let small: SE3<A, A> = SE3Tangent::<A, A, A>::from_data(delta).exp();
+            let se3_pert: SE3<A, B> = se3.compose(small);
+            let diff = se3.compose(se3_pert.inverse()).log();
+            for row in 0..6 {
+                let numerical = diff.data[row] / h;
+                prop_assert!(
+                    abs_diff_eq!(jac.data[row][i], numerical, epsilon = eps),
+                    "inverse_jac mismatch at ({}, {}): analytic={}, numerical={}",
+                    row, i, jac.data[row][i], numerical
+                );
+            }
+        }
+    }
+
+    // compose_with_jac: result matches compose
+    #[test]
+    fn compose_with_jac_result(
+        q1 in arb_unit_quat(), q2 in arb_unit_quat(),
+        t1x in -10.0..10.0f64, t1y in -10.0..10.0f64, t1z in -10.0..10.0f64,
+        t2x in -10.0..10.0f64, t2y in -10.0..10.0f64, t2z in -10.0..10.0f64
+    ) {
+        let r1: SE3<A, B> = SE3::from_vec_quat([t1x, t1y, t1z], q1);
+        let r2: SE3<C, A> = SE3::from_vec_quat([t2x, t2y, t2z], q2);
+        let (result, _, _) = r1.compose_with_jac(r2);
+        let expected = r1.compose(r2);
+        prop_assert!(quat_approx_eq(&result.quat, &expected.quat));
+        for i in 0..3 {
+            prop_assert!(abs_diff_eq!(result.vec[i], expected.vec[i], epsilon = EPS));
+        }
+    }
+
+    // compose_with_jac: J_lhs (numerical verification via right perturbation on r1)
+    // log(f(X₁,X₂)⁻¹ · f(X₁_pert,X₂)) ≈ J_lhs · δ
+    #[test]
+    fn compose_with_jac_lhs(
+        q1 in arb_unit_quat(), q2 in arb_unit_quat(),
+        t1x in -10.0..10.0f64, t1y in -10.0..10.0f64, t1z in -10.0..10.0f64,
+        t2x in -10.0..10.0f64, t2y in -10.0..10.0f64, t2z in -10.0..10.0f64
+    ) {
+        let r1: SE3<A, B> = SE3::from_vec_quat([t1x, t1y, t1z], q1);
+        let r2: SE3<C, A> = SE3::from_vec_quat([t2x, t2y, t2z], q2);
+        let (_, jac_lhs, _) = r1.compose_with_jac(r2);
+        let h = 1e-7;
+        let eps = 1e-5;
+        let composed = r1.compose(r2);
+        for i in 0..6 {
+            let mut delta = [0.0; 6];
+            delta[i] = h;
+            let small: SE3<A, A> = SE3Tangent::<A, A, A>::from_data(delta).exp();
+            let r1_pert: SE3<A, B> = r1.compose(small);
+            let composed_pert = r1_pert.compose(r2);
+            let diff = composed.inverse().compose(composed_pert).log();
+            for row in 0..6 {
+                let numerical = diff.data[row] / h;
+                prop_assert!(
+                    abs_diff_eq!(jac_lhs.data[row][i], numerical, epsilon = eps),
+                    "compose J_lhs mismatch at ({}, {}): analytic={}, numerical={}",
+                    row, i, jac_lhs.data[row][i], numerical
+                );
+            }
+        }
+    }
+
+    // compose_with_jac: J_rhs (numerical verification via right perturbation on r2)
+    // log(f(X₁,X₂)⁻¹ · f(X₁,X₂_pert)) ≈ J_rhs · δ
+    #[test]
+    fn compose_with_jac_rhs(
+        q1 in arb_unit_quat(), q2 in arb_unit_quat(),
+        t1x in -10.0..10.0f64, t1y in -10.0..10.0f64, t1z in -10.0..10.0f64,
+        t2x in -10.0..10.0f64, t2y in -10.0..10.0f64, t2z in -10.0..10.0f64
+    ) {
+        let r1: SE3<A, B> = SE3::from_vec_quat([t1x, t1y, t1z], q1);
+        let r2: SE3<C, A> = SE3::from_vec_quat([t2x, t2y, t2z], q2);
+        let (_, _, jac_rhs) = r1.compose_with_jac(r2);
+        let h = 1e-7;
+        let eps = 1e-5;
+        let composed = r1.compose(r2);
+        for i in 0..6 {
+            let mut delta = [0.0; 6];
+            delta[i] = h;
+            let small: SE3<C, C> = SE3Tangent::<C, C, C>::from_data(delta).exp();
+            let r2_pert: SE3<C, A> = r2.compose(small);
+            let composed_pert = r1.compose(r2_pert);
+            let diff = composed.inverse().compose(composed_pert).log();
+            for row in 0..6 {
+                let numerical = diff.data[row] / h;
+                prop_assert!(
+                    abs_diff_eq!(jac_rhs.data[row][i], numerical, epsilon = eps),
+                    "compose J_rhs mismatch at ({}, {}): analytic={}, numerical={}",
+                    row, i, jac_rhs.data[row][i], numerical
+                );
+            }
+        }
+    }
+
+    // act_with_jac on Vector3: result matches act
+    #[test]
+    fn act_with_jac_vector3_result(
+        se3 in arb_se3(),
+        x in -10.0..10.0f64, y in -10.0..10.0f64, z in -10.0..10.0f64
+    ) {
+        let v: Vector3<A> = Vector3::new(x, y, z);
+        let (result, _, _) = se3.act_with_jac(v);
+        let expected = se3.act(v);
+        for i in 0..3 {
+            prop_assert!(abs_diff_eq!(result.data[i], expected.data[i], epsilon = EPS));
+        }
+    }
+
+    // act_with_jac on Vector3: J_input (numerical verification)
+    #[test]
+    fn act_with_jac_vector3_input(
+        se3 in arb_se3(),
+        x in -10.0..10.0f64, y in -10.0..10.0f64, z in -10.0..10.0f64
+    ) {
+        let v: Vector3<A> = Vector3::new(x, y, z);
+        let (_, _, jac_input) = se3.act_with_jac(v);
+        let h = 1e-7;
+        let eps = 1e-5;
+        let result = se3.act(v);
+        for i in 0..3 {
+            let mut perturbed = v.data;
+            perturbed[i] += h;
+            let v_plus: Vector3<A> = Vector3::from_data(perturbed);
+            let result_plus = se3.act(v_plus);
+            for row in 0..3 {
+                let numerical = (result_plus.data[row] - result.data[row]) / h;
+                prop_assert!(
+                    abs_diff_eq!(jac_input.data[row][i], numerical, epsilon = eps),
+                    "act J_input mismatch at ({}, {}): analytic={}, numerical={}",
+                    row, i, jac_input.data[row][i], numerical
+                );
+            }
+        }
+    }
+
+    // act_with_jac on Vector3: J_group (numerical verification via right perturbation)
+    #[test]
+    fn act_with_jac_vector3_group(
+        se3 in arb_se3(),
+        x in -10.0..10.0f64, y in -10.0..10.0f64, z in -10.0..10.0f64
+    ) {
+        let v: Vector3<A> = Vector3::new(x, y, z);
+        let (_, jac_group, _) = se3.act_with_jac(v);
+        let h = 1e-7;
+        let eps = 1e-5;
+        let result = se3.act(v);
+        for i in 0..6 {
+            let mut delta = [0.0; 6];
+            delta[i] = h;
+            let small: SE3<A, A> = SE3Tangent::<A, A, A>::from_data(delta).exp();
+            let se3_pert: SE3<A, B> = se3.compose(small);
+            let result_plus = se3_pert.act(v);
+            for row in 0..3 {
+                let numerical = (result_plus.data[row] - result.data[row]) / h;
+                prop_assert!(
+                    abs_diff_eq!(jac_group.data[row][i], numerical, epsilon = eps),
+                    "act J_group mismatch at ({}, {}): analytic={}, numerical={}",
+                    row, i, jac_group.data[row][i], numerical
+                );
+            }
+        }
+    }
+
+    // act_with_jac on SE3Tangent: result matches act
+    #[test]
+    fn act_with_jac_tangent_result(
+        se3 in arb_se3(),
+        v in arb_se3_tangent()
+    ) {
+        let (result, _, _) = se3.act_with_jac(v);
+        let expected = se3.act(v);
+        for i in 0..6 {
+            prop_assert!(abs_diff_eq!(result.data[i], expected.data[i], epsilon = EPS));
+        }
+    }
+
+    // act_with_jac on SE3Tangent: J_input (numerical verification)
+    #[test]
+    fn act_with_jac_tangent_input(
+        se3 in arb_se3(),
+        v in arb_se3_tangent()
+    ) {
+        let (_, _, jac_input) = se3.act_with_jac(v);
+        let h = 1e-7;
+        let eps = 1e-5;
+        let result = se3.act(v);
+        for i in 0..6 {
+            let mut perturbed = v.data;
+            perturbed[i] += h;
+            let v_plus: SE3Tangent<A, B, A> = SE3Tangent::from_data(perturbed);
+            let result_plus = se3.act(v_plus);
+            for row in 0..6 {
+                let numerical = (result_plus.data[row] - result.data[row]) / h;
+                prop_assert!(
+                    abs_diff_eq!(jac_input.data[row][i], numerical, epsilon = eps),
+                    "act J_input mismatch at ({}, {}): analytic={}, numerical={}",
+                    row, i, jac_input.data[row][i], numerical
+                );
+            }
+        }
+    }
+
+    // act_with_jac on SE3Tangent: J_group (numerical verification via right perturbation)
+    #[test]
+    fn act_with_jac_tangent_group(
+        se3 in arb_se3(),
+        v in arb_se3_tangent()
+    ) {
+        let (_, jac_group, _) = se3.act_with_jac(v);
+        let h = 1e-7;
+        let eps = 1e-5;
+        let result = se3.act(v);
+        for i in 0..6 {
+            let mut delta = [0.0; 6];
+            delta[i] = h;
+            let small: SE3<A, A> = SE3Tangent::<A, A, A>::from_data(delta).exp();
+            let se3_pert: SE3<A, B> = se3.compose(small);
+            let result_plus = se3_pert.act(v);
+            for row in 0..6 {
+                let numerical = (result_plus.data[row] - result.data[row]) / h;
+                prop_assert!(
+                    abs_diff_eq!(jac_group.data[row][i], numerical, epsilon = eps),
+                    "act J_group mismatch at ({}, {}): analytic={}, numerical={}",
+                    row, i, jac_group.data[row][i], numerical
+                );
+            }
+        }
+    }
+
     // adjoint
 
     // Ad_X(v) = log(X_rhs * exp(v) * X_lhs^{-1})

@@ -31,6 +31,23 @@ impl<A, B, C, T: Float> SE3Tangent<A, B, C, T> {
         Self::from_data([lin[0], lin[1], lin[2], ang[0], ang[1], ang[2]])
     }
 
+    /// Small adjoint matrix ad(τ) such that [τ₁, τ₂] = ad(τ₁) · τ₂
+    /// where [·,·] denotes the Lie bracket.
+    ///
+    /// ```text
+    /// ad(τ) = [[ω]×  [v]×]
+    ///         [ 0   [ω]× ]
+    /// ```
+    pub fn ad(&self) -> Mat6<T> {
+        let wx = Mat3::skew(self.ang());
+        let vx = Mat3::skew(self.lin());
+        let mut m = Mat6::zeros();
+        m.set_block(0, 0, &wx);
+        m.set_block(0, 3, &vx);
+        m.set_block(3, 3, &wx);
+        m
+    }
+
     pub fn hat(&self) -> Mat4<T> {
         let mut m = Mat4::zeros();
         m.set_block(0, 0, &Mat3::skew(self.ang()));
@@ -56,6 +73,16 @@ impl<A, B, C, T: Float> SE3Tangent<A, B, C, T> {
         m.set_block(0, 3, &(-so3_ljacinv * q * so3_ljacinv));
         m.set_block(3, 3, &so3_ljacinv);
         m
+    }
+
+    /// Approximate composition via BCH: log(exp(τ₁) · exp(τ₂)) ≈ τ₁ + τ₂ + ½[τ₁, τ₂]
+    /// where [·,·] denotes the Lie bracket.
+    pub fn bch_compose(&self, rhs: Self) -> Self {
+        let half = T::one() / (T::one() + T::one());
+        let bracket = self.ad() * rhs.data;
+        Self::from_data(std::array::from_fn(|i| {
+            self.data[i] + rhs.data[i] + bracket[i] * half
+        }))
     }
 
     pub fn rjac(&self) -> Mat6<T> {

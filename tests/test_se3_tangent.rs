@@ -351,4 +351,120 @@ proptest! {
         let product = tau.rjacinv() * tau.rjac();
         prop_assert!(mat6_approx_eq(&product, &Mat6::identity(), EPS));
     }
+
+    // ad
+
+    // compose (BCH)
+
+    #[test]
+    fn compose_zero_lhs(tau in arb_se3_tangent()) {
+        // 0.bch_compose(τ) ≈ τ
+        let zero: SE3Tangent<A, B, A> = SE3Tangent::zero();
+        let result = zero.bch_compose(tau);
+        for i in 0..6 {
+            prop_assert!(abs_diff_eq!(result.data[i], tau.data[i], epsilon = EPS));
+        }
+    }
+
+    #[test]
+    fn compose_zero_rhs(tau in arb_se3_tangent()) {
+        // τ.bch_compose(0) ≈ τ
+        let zero: SE3Tangent<A, B, A> = SE3Tangent::zero();
+        let result = tau.bch_compose(zero);
+        for i in 0..6 {
+            prop_assert!(abs_diff_eq!(result.data[i], tau.data[i], epsilon = EPS));
+        }
+    }
+
+    #[test]
+    fn compose_approximates_exact(tau1 in arb_se3_tangent(), tau2 in arb_se3_tangent()) {
+        // BCH should approximate log(exp(τ₁) · exp(τ₂))
+        // Accuracy is O(|τ|³), so scale down for a tighter bound
+        let s = 0.05;
+        let t1: SE3Tangent<A, A, A> = SE3Tangent::from_data(std::array::from_fn(|i| tau1.data[i] * s));
+        let t2: SE3Tangent<A, A, A> = SE3Tangent::from_data(std::array::from_fn(|i| tau2.data[i] * s));
+        let bch = t1.bch_compose(t2);
+        let exact = t1.exp().compose(t2.exp()).log();
+        let eps = 1e-2;
+        for i in 0..6 {
+            prop_assert!(
+                abs_diff_eq!(bch.data[i], exact.data[i], epsilon = eps),
+                "BCH mismatch at {}: bch={}, exact={}",
+                i, bch.data[i], exact.data[i]
+            );
+        }
+    }
+
+    #[test]
+    fn compose_with_negation_near_zero(tau in arb_se3_tangent()) {
+        // τ.bch_compose(-τ) ≈ 0 (for small τ, exact at τ = 0)
+        let s = 0.1;
+        let t: SE3Tangent<A, A, A> = SE3Tangent::from_data(std::array::from_fn(|i| tau.data[i] * s));
+        let neg: SE3Tangent<A, A, A> = SE3Tangent::from_data(std::array::from_fn(|i| -t.data[i]));
+        let result = t.bch_compose(neg);
+        let eps = 1e-2;
+        prop_assert!(abs_diff_eq!(result.norm(), 0.0, epsilon = eps));
+    }
+
+    // ad
+
+    #[test]
+    fn ad_zero_is_zero(_dummy in 0..1i32) {
+        let zero: SE3Tangent<A, B, A> = SE3Tangent::zero();
+        let ad = zero.ad();
+        prop_assert!(mat6_approx_eq(&ad, &Mat6::zeros(), EPS));
+    }
+
+    #[test]
+    fn ad_structure(tau in arb_se3_tangent()) {
+        // ad(τ) = [[ω]×  [v]×]
+        //         [ 0    [ω]×]
+        let ad = tau.ad();
+        let wx = Mat3::skew(tau.ang());
+        let vx = Mat3::skew(tau.lin());
+        let mut expected = Mat6::zeros();
+        expected.set_block(0, 0, &wx);
+        expected.set_block(0, 3, &vx);
+        expected.set_block(3, 3, &wx);
+        prop_assert!(mat6_approx_eq(&ad, &expected, EPS));
+    }
+
+    #[test]
+    fn ad_self_bracket_is_zero(tau in arb_se3_tangent()) {
+        // ad(τ) · τ = [τ, τ] = 0
+        let result = tau.ad() * tau.data;
+        for i in 0..6 {
+            prop_assert!(abs_diff_eq!(result[i], 0.0, epsilon = EPS));
+        }
+    }
+
+    #[test]
+    fn ad_antisymmetric(tau1 in arb_se3_tangent(), tau2 in arb_se3_tangent()) {
+        // ad(τ₁) · τ₂ = -ad(τ₂) · τ₁
+        let lhs = tau1.ad() * tau2.data;
+        let rhs = tau2.ad() * tau1.data;
+        for i in 0..6 {
+            prop_assert!(abs_diff_eq!(lhs[i], -rhs[i], epsilon = EPS));
+        }
+    }
+
+    #[test]
+    fn ad_jacobi_identity(tau1 in arb_se3_tangent(), tau2 in arb_se3_tangent(), tau3 in arb_se3_tangent()) {
+        // ad(τ₁)·(ad(τ₂)·τ₃) + ad(τ₂)·(ad(τ₃)·τ₁) + ad(τ₃)·(ad(τ₁)·τ₂) = 0
+        let a = tau1.ad() * (tau2.ad() * tau3.data);
+        let b = tau2.ad() * (tau3.ad() * tau1.data);
+        let c = tau3.ad() * (tau1.ad() * tau2.data);
+        for i in 0..6 {
+            prop_assert!(abs_diff_eq!(a[i] + b[i] + c[i], 0.0, epsilon = EPS));
+        }
+    }
+
+    #[test]
+    fn ad_ljac_small_angle(tau in arb_se3_tangent_small()) {
+        // For small τ, Jl(τ) ≈ I + ½ ad(τ)
+        let eps = 1e-5;
+        let jl = tau.ljac();
+        let expected = Mat6::identity() + tau.ad() * 0.5;
+        prop_assert!(mat6_approx_eq(&jl, &expected, eps));
+    }
 }

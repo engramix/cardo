@@ -410,6 +410,286 @@ proptest! {
         prop_assert!(abs_diff_eq!(reexpressed.z(), rotated.z(), epsilon = EPS));
     }
 
+    // inverse_with_jac: result matches inverse
+    #[test]
+    fn inverse_with_jac_result_matches_inverse(r in arb_so3()) {
+        let (result, _) = r.inverse_with_jac();
+        let expected = r.inverse();
+        prop_assert!(quat_approx_eq(&result.quat, &expected.quat));
+    }
+
+    // inverse_with_jac: J = -Ad_X (numerical verification via right perturbation)
+    // log(f(X)⁻¹ · f(X_pert)) = log(X · X_pert⁻¹) ≈ J · δ
+    #[test]
+    fn inverse_with_jac_numerical(r in arb_so3()) {
+        let (_, jac) = r.inverse_with_jac();
+        let h = 1e-7;
+        let eps = 1e-5;
+        for i in 0..3 {
+            let mut delta = [0.0; 3];
+            delta[i] = h;
+            let small_rot: SO3<A, A> = SO3Tangent::<A, A, A>::from_data(delta).exp();
+            let r_perturbed: SO3<A, B> = r.compose(small_rot);
+            let diff = r.compose(r_perturbed.inverse()).log();
+            for row in 0..3 {
+                let numerical = diff.data[row] / h;
+                prop_assert!(
+                    abs_diff_eq!(jac.data[row][i], numerical, epsilon = eps),
+                    "inverse_jac mismatch at ({}, {}): analytic={}, numerical={}",
+                    row, i, jac.data[row][i], numerical
+                );
+            }
+        }
+    }
+
+    // compose_with_jac: result matches compose
+    #[test]
+    fn compose_with_jac_result_matches_compose(q1 in arb_unit_quat(), q2 in arb_unit_quat()) {
+        let r1: SO3<A, B> = SO3::from_quat(q1);
+        let r2: SO3<C, A> = SO3::from_quat(q2);
+        let (result, _, _) = r1.compose_with_jac(r2);
+        let expected = r1.compose(r2);
+        prop_assert!(quat_approx_eq(&result.quat, &expected.quat));
+    }
+
+    // compose_with_jac: J_lhs (numerical verification via right perturbation on r1)
+    // log(f(X₁,X₂)⁻¹ · f(X₁_pert,X₂)) ≈ J_lhs · δ
+    #[test]
+    fn compose_with_jac_lhs(q1 in arb_unit_quat(), q2 in arb_unit_quat()) {
+        let r1: SO3<A, B> = SO3::from_quat(q1);
+        let r2: SO3<C, A> = SO3::from_quat(q2);
+        let (_, jac_lhs, _) = r1.compose_with_jac(r2);
+        let h = 1e-7;
+        let eps = 1e-5;
+        let composed = r1.compose(r2);
+        for i in 0..3 {
+            let mut delta = [0.0; 3];
+            delta[i] = h;
+            let small_rot: SO3<A, A> = SO3Tangent::<A, A, A>::from_data(delta).exp();
+            let r1_perturbed: SO3<A, B> = r1.compose(small_rot);
+            let composed_perturbed = r1_perturbed.compose(r2);
+            let diff = composed.inverse().compose(composed_perturbed).log();
+            for row in 0..3 {
+                let numerical = diff.data[row] / h;
+                prop_assert!(
+                    abs_diff_eq!(jac_lhs.data[row][i], numerical, epsilon = eps),
+                    "compose J_lhs mismatch at ({}, {}): analytic={}, numerical={}",
+                    row, i, jac_lhs.data[row][i], numerical
+                );
+            }
+        }
+    }
+
+    // compose_with_jac: J_rhs (numerical verification via right perturbation on r2)
+    // log(f(X₁,X₂)⁻¹ · f(X₁,X₂_pert)) ≈ J_rhs · δ
+    #[test]
+    fn compose_with_jac_rhs(q1 in arb_unit_quat(), q2 in arb_unit_quat()) {
+        let r1: SO3<A, B> = SO3::from_quat(q1);
+        let r2: SO3<C, A> = SO3::from_quat(q2);
+        let (_, _, jac_rhs) = r1.compose_with_jac(r2);
+        let h = 1e-7;
+        let eps = 1e-5;
+        let composed = r1.compose(r2);
+        for i in 0..3 {
+            let mut delta = [0.0; 3];
+            delta[i] = h;
+            let small_rot: SO3<C, C> = SO3Tangent::<C, C, C>::from_data(delta).exp();
+            let r2_perturbed: SO3<C, A> = r2.compose(small_rot);
+            let composed_perturbed = r1.compose(r2_perturbed);
+            let diff = composed.inverse().compose(composed_perturbed).log();
+            for row in 0..3 {
+                let numerical = diff.data[row] / h;
+                prop_assert!(
+                    abs_diff_eq!(jac_rhs.data[row][i], numerical, epsilon = eps),
+                    "compose J_rhs mismatch at ({}, {}): analytic={}, numerical={}",
+                    row, i, jac_rhs.data[row][i], numerical
+                );
+            }
+        }
+    }
+
+    // act_with_jac on Vector3: result matches act
+    #[test]
+    fn act_with_jac_vector3_result(r in arb_so3(), x in -10.0..10.0f64, y in -10.0..10.0f64, z in -10.0..10.0f64) {
+        let v: Vector3<A> = Vector3::new(x, y, z);
+        let (result, _, _) = r.act_with_jac(v);
+        let expected = r.act(v);
+        prop_assert!(abs_diff_eq!(result.x(), expected.x(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(result.y(), expected.y(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(result.z(), expected.z(), epsilon = EPS));
+    }
+
+    // act_with_jac on Vector3: J_input (numerical verification)
+    #[test]
+    fn act_with_jac_vector3_input(r in arb_so3(), x in -10.0..10.0f64, y in -10.0..10.0f64, z in -10.0..10.0f64) {
+        let v: Vector3<A> = Vector3::new(x, y, z);
+        let (_, _, jac_input) = r.act_with_jac(v);
+        let h = 1e-7;
+        let eps = 1e-5;
+        let result = r.act(v);
+        for i in 0..3 {
+            let mut perturbed = v.data;
+            perturbed[i] += h;
+            let v_plus: Vector3<A> = Vector3::from_data(perturbed);
+            let result_plus = r.act(v_plus);
+            for row in 0..3 {
+                let numerical = (result_plus.data[row] - result.data[row]) / h;
+                prop_assert!(
+                    abs_diff_eq!(jac_input.data[row][i], numerical, epsilon = eps),
+                    "J_input mismatch at ({}, {}): analytic={}, numerical={}",
+                    row, i, jac_input.data[row][i], numerical
+                );
+            }
+        }
+    }
+
+    // act_with_jac on Vector3: J_group (numerical verification via right perturbation)
+    #[test]
+    fn act_with_jac_vector3_group(r in arb_so3(), x in -10.0..10.0f64, y in -10.0..10.0f64, z in -10.0..10.0f64) {
+        let v: Vector3<A> = Vector3::new(x, y, z);
+        let (_, jac_group, _) = r.act_with_jac(v);
+        let h = 1e-7;
+        let eps = 1e-5;
+        let result = r.act(v);
+        for i in 0..3 {
+            let mut delta = [0.0; 3];
+            delta[i] = h;
+            let small_rot: SO3<A, A> = SO3Tangent::<A, A, A>::from_data(delta).exp();
+            let r_perturbed: SO3<A, B> = r.compose(small_rot);
+            let result_plus = r_perturbed.act(v);
+            for row in 0..3 {
+                let numerical = (result_plus.data[row] - result.data[row]) / h;
+                prop_assert!(
+                    abs_diff_eq!(jac_group.data[row][i], numerical, epsilon = eps),
+                    "J_group mismatch at ({}, {}): analytic={}, numerical={}",
+                    row, i, jac_group.data[row][i], numerical
+                );
+            }
+        }
+    }
+
+    // act_with_jac on SO3Tangent: result matches act
+    #[test]
+    fn act_with_jac_tangent_result(r in arb_so3(), v in arb_tangent()) {
+        let (result, _, _) = r.act_with_jac(v);
+        let expected = r.act(v);
+        prop_assert!(abs_diff_eq!(result.x(), expected.x(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(result.y(), expected.y(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(result.z(), expected.z(), epsilon = EPS));
+    }
+
+    // act_with_jac on SO3Tangent: J_input (numerical verification)
+    #[test]
+    fn act_with_jac_tangent_input(r in arb_so3(), v in arb_tangent()) {
+        let (_, _, jac_input) = r.act_with_jac(v);
+        let h = 1e-7;
+        let eps = 1e-5;
+        let result = r.act(v);
+        for i in 0..3 {
+            let mut perturbed = v.data;
+            perturbed[i] += h;
+            let v_plus: SO3Tangent<A, B, A> = SO3Tangent::from_data(perturbed);
+            let result_plus = r.act(v_plus);
+            for row in 0..3 {
+                let numerical = (result_plus.data[row] - result.data[row]) / h;
+                prop_assert!(
+                    abs_diff_eq!(jac_input.data[row][i], numerical, epsilon = eps),
+                    "J_input mismatch at ({}, {}): analytic={}, numerical={}",
+                    row, i, jac_input.data[row][i], numerical
+                );
+            }
+        }
+    }
+
+    // act_with_jac on SO3Tangent: J_group (numerical verification via right perturbation)
+    #[test]
+    fn act_with_jac_tangent_group(r in arb_so3(), v in arb_tangent()) {
+        let (_, jac_group, _) = r.act_with_jac(v);
+        let h = 1e-7;
+        let eps = 1e-5;
+        let result = r.act(v);
+        for i in 0..3 {
+            let mut delta = [0.0; 3];
+            delta[i] = h;
+            let small_rot: SO3<A, A> = SO3Tangent::<A, A, A>::from_data(delta).exp();
+            let r_perturbed: SO3<A, B> = r.compose(small_rot);
+            let result_plus = r_perturbed.act(v);
+            for row in 0..3 {
+                let numerical = (result_plus.data[row] - result.data[row]) / h;
+                prop_assert!(
+                    abs_diff_eq!(jac_group.data[row][i], numerical, epsilon = eps),
+                    "J_group mismatch at ({}, {}): analytic={}, numerical={}",
+                    row, i, jac_group.data[row][i], numerical
+                );
+            }
+        }
+    }
+
+    // from_two_vectors
+
+    #[test]
+    fn from_two_vectors_rotates_a_to_b(a in arb_unit_axis(), b in arb_unit_axis()) {
+        // R * a ≈ b
+        let r: SO3<A, A> = SO3::from_two_vectors(&a, &b);
+        let result = r.act(a);
+        prop_assert!(abs_diff_eq!(result.x(), b.x(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(result.y(), b.y(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(result.z(), b.z(), epsilon = EPS));
+    }
+
+    #[test]
+    fn from_two_vectors_same_is_identity(v in arb_unit_axis()) {
+        // from_two_vectors(v, v) = identity
+        let r: SO3<A, A> = SO3::from_two_vectors(&v, &v);
+        let id: SO3<A, A> = SO3::identity();
+        prop_assert!(quat_approx_eq(&r.quat, &id.quat));
+    }
+
+    #[test]
+    fn from_two_vectors_inverse_reverses(a in arb_unit_axis(), b in arb_unit_axis()) {
+        // from_two_vectors(a, b)⁻¹ ≈ from_two_vectors(b, a)
+        let r: SO3<A, A> = SO3::from_two_vectors(&a, &b);
+        let r_inv: SO3<A, A> = SO3::from_two_vectors(&b, &a);
+        prop_assert!(quat_approx_eq(&r.inverse().quat, &r_inv.quat));
+    }
+
+    #[test]
+    fn from_two_vectors_is_minimal_rotation(a in arb_unit_axis(), b in arb_unit_axis()) {
+        // The rotation angle should equal acos(a · b)
+        let r: SO3<A, A> = SO3::from_two_vectors(&a, &b);
+        let angle = r.log().norm();
+        let dot = a.dot(&b).min(1.0).max(-1.0);
+        let expected = dot.acos();
+        prop_assert!(abs_diff_eq!(angle, expected, epsilon = EPS));
+    }
+
+    #[test]
+    fn from_two_vectors_axis_perpendicular(a in arb_unit_axis(), b in arb_unit_axis()) {
+        // The rotation axis should be perpendicular to both a and b
+        let r: SO3<A, A> = SO3::from_two_vectors(&a, &b);
+        let log = r.log();
+        let norm = log.norm();
+        // Skip when a ≈ b (axis undefined) or a ≈ -b (axis is any perpendicular)
+        if norm > 1e-6 && (std::f64::consts::PI - norm) > 1e-6 {
+            let axis: Vector3<A> = Vector3::new(log.x() / norm, log.y() / norm, log.z() / norm);
+            let dot_a = axis.dot(&a);
+            let dot_b = axis.dot(&b);
+            prop_assert!(abs_diff_eq!(dot_a, 0.0, epsilon = EPS));
+            prop_assert!(abs_diff_eq!(dot_b, 0.0, epsilon = EPS));
+        }
+    }
+
+    #[test]
+    fn from_two_vectors_opposite(v in arb_unit_axis()) {
+        // 180° case: R * v = -v
+        let neg: Vector3<A> = Vector3::new(-v.x(), -v.y(), -v.z());
+        let r: SO3<A, A> = SO3::from_two_vectors(&v, &neg);
+        let result = r.act(v);
+        prop_assert!(abs_diff_eq!(result.x(), neg.x(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(result.y(), neg.y(), epsilon = EPS));
+        prop_assert!(abs_diff_eq!(result.z(), neg.z(), epsilon = EPS));
+    }
+
     #[test]
     fn axis_angle_log_consistency(axis in arb_unit_axis(), angle in -PI..PI) {
         // log(from_axis_angle(axis, θ)) ≈ θ * axis

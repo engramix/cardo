@@ -1,4 +1,4 @@
-use crate::act::Act;
+use crate::act::{Act, ActWithJac};
 use crate::mat::{Mat, Mat3, Mat4, Mat6};
 use crate::quat::Quat;
 use crate::se3_tangent::SE3Tangent;
@@ -125,11 +125,23 @@ impl<A, B, T: Float> SE3<A, B, T> {
         SE3::from_vec_quat(t_inv, q_inv)
     }
 
+    pub fn inverse_with_jac(&self) -> (SE3<B, A, T>, Mat6<T>) {
+        (self.inverse(), -self.adjoint_matrix())
+    }
+
     pub fn compose<C>(&self, rhs: SE3<C, A, T>) -> SE3<C, B, T> {
         let rot_t = self.quat.rotate(rhs.vec);
         SE3::from_vec_quat(
             std::array::from_fn(|i| self.vec[i] + rot_t[i]),
             self.quat * rhs.quat,
+        )
+    }
+
+    pub fn compose_with_jac<C>(&self, rhs: SE3<C, A, T>) -> (SE3<C, B, T>, Mat6<T>, Mat6<T>) {
+        (
+            self.compose(rhs),
+            rhs.inverse().adjoint_matrix(),
+            Mat6::identity(),
         )
     }
 
@@ -209,6 +221,26 @@ impl<A, B, T: Float> Act<Vector3<A, T>> for SE3<A, B, T> {
     }
 }
 
+
+impl<A, B, T: Float> Mul<Vector3<A, T>> for SE3<A, B, T> {
+    type Output = Vector3<B, T>;
+    fn mul(self, rhs: Vector3<A, T>) -> Vector3<B, T> {
+        self.act(rhs)
+    }
+}
+
+impl<A, B, T: Float> ActWithJac<Vector3<A, T>> for SE3<A, B, T> {
+    type JacGroup = Mat<3, 6, T>;
+    type JacInput = Mat3<T>;
+    fn act_with_jac(&self, v: Vector3<A, T>) -> (Vector3<B, T>, Mat<3, 6, T>, Mat3<T>) {
+        let r = SO3::<A, B, T>::from_quat(self.quat).to_matrix();
+        let mut jac_group = Mat::<3, 6, T>::zeros();
+        jac_group.set_block(0, 0, &r);
+        jac_group.set_block(0, 3, &(-r * Mat3::skew(v.data)));
+        (self.act(v), jac_group, r)
+    }
+}
+
 // Act on SE3Tangent: SE3<A,B> * SE3Tangent<X,Y,A> -> SE3Tangent<X,Y,B>
 impl<A, B, X, Y, T: Float> Act<SE3Tangent<X, Y, A, T>> for SE3<A, B, T> {
     type Output = SE3Tangent<X, Y, B, T>;
@@ -217,10 +249,23 @@ impl<A, B, X, Y, T: Float> Act<SE3Tangent<X, Y, A, T>> for SE3<A, B, T> {
     }
 }
 
-impl<A, B, T: Float> Mul<Vector3<A, T>> for SE3<A, B, T> {
-    type Output = Vector3<B, T>;
-    fn mul(self, rhs: Vector3<A, T>) -> Vector3<B, T> {
-        self.act(rhs)
+impl<A, B, X, Y, T: Float> ActWithJac<SE3Tangent<X, Y, A, T>> for SE3<A, B, T> {
+    type JacGroup = Mat6<T>;
+    type JacInput = Mat6<T>;
+    fn act_with_jac(
+        &self,
+        v: SE3Tangent<X, Y, A, T>,
+    ) -> (SE3Tangent<X, Y, B, T>, Mat6<T>, Mat6<T>) {
+        let r = SO3::<A, B, T>::from_quat(self.quat).to_matrix();
+        // JacGroup: only angular perturbation affects the result
+        let mut jac_group = Mat6::zeros();
+        jac_group.set_block(0, 3, &(-r * Mat3::skew(v.lin())));
+        jac_group.set_block(3, 3, &(-r * Mat3::skew(v.ang())));
+        // JacInput: block-diagonal R
+        let mut jac_input = Mat6::zeros();
+        jac_input.set_block(0, 0, &r);
+        jac_input.set_block(3, 3, &r);
+        (self.act(v), jac_group, jac_input)
     }
 }
 
