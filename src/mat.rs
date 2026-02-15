@@ -18,9 +18,38 @@ impl<const N: usize, const M: usize, T: Float> Mat<N, M, T> {
         }
     }
 
+    pub fn set_block<const P: usize, const Q: usize>(
+        &mut self,
+        row: usize,
+        col: usize,
+        block: &Mat<P, Q, T>,
+    ) {
+        for i in 0..P {
+            for j in 0..Q {
+                self.data[row + i][col + j] = block.data[i][j];
+            }
+        }
+    }
+
     pub fn transpose(&self) -> Mat<M, N, T> {
         Mat {
             data: std::array::from_fn(|j| std::array::from_fn(|i| self.data[i][j])),
+        }
+    }
+}
+
+// Row vector: Mat<1, M>
+impl<const M: usize, T: Float> Mat<1, M, T> {
+    pub fn row(data: [T; M]) -> Self {
+        Self { data: [data] }
+    }
+}
+
+// Column vector: Mat<N, 1>
+impl<const N: usize, T: Float> Mat<N, 1, T> {
+    pub fn col(data: [T; N]) -> Self {
+        Self {
+            data: std::array::from_fn(|i| [data[i]]),
         }
     }
 }
@@ -37,9 +66,7 @@ impl<const N: usize, T: Float> Mat<N, N, T> {
 }
 
 // Mat<N, K> * Mat<K, M> -> Mat<N, M>
-impl<const N: usize, const K: usize, const M: usize, T: Float> Mul<Mat<K, M, T>>
-    for Mat<N, K, T>
-{
+impl<const N: usize, const K: usize, const M: usize, T: Float> Mul<Mat<K, M, T>> for Mat<N, K, T> {
     type Output = Mat<N, M, T>;
     fn mul(self, rhs: Mat<K, M, T>) -> Mat<N, M, T> {
         Mat {
@@ -109,9 +136,7 @@ impl<const N: usize, const M: usize, T: Float> Mul<T> for Mat<N, M, T> {
     type Output = Self;
     fn mul(self, rhs: T) -> Self {
         Self {
-            data: std::array::from_fn(|i| {
-                std::array::from_fn(|j| self.data[i][j] * rhs)
-            }),
+            data: std::array::from_fn(|i| std::array::from_fn(|j| self.data[i][j] * rhs)),
         }
     }
 }
@@ -148,3 +173,12 @@ impl<const N: usize, const M: usize, T: Float> IndexMut<usize> for Mat<N, M, T> 
 
 // Type aliases
 pub type Mat3<T = f64> = Mat<3, 3, T>;
+
+impl<T: Float> Mat3<T> {
+    pub fn skew(v: [T; 3]) -> Self {
+        let z = T::zero();
+        Self::from_data([[z, -v[2], v[1]], [v[2], z, -v[0]], [-v[1], v[0], z]])
+    }
+}
+pub type Mat4<T = f64> = Mat<4, 4, T>;
+pub type Mat6<T = f64> = Mat<6, 6, T>;

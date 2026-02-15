@@ -1,1 +1,3 @@
-pub use crate::{SO3, SO3Tangent, Vector3, Quat, Mat, Mat3, chain};
+pub use crate::{
+    Act, Mat, Mat3, Mat4, Mat6, Quat, SE3, SE3Tangent, SO3, SO3Tangent, Vector3, chain,
+};

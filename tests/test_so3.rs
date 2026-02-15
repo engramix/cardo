@@ -26,21 +26,9 @@ fn quat_approx_eq(q1: &Quat<f64>, q2: &Quat<f64>) -> bool {
     same || negated
 }
 
-fn tangent_approx_eq(v1: &SO3Tangent<A, B, A>, v2: &SO3Tangent<A, B, A>) -> bool {
-    abs_diff_eq!(v1.x(), v2.x(), epsilon = EPS)
-        && abs_diff_eq!(v1.y(), v2.y(), epsilon = EPS)
-        && abs_diff_eq!(v1.z(), v2.z(), epsilon = EPS)
-}
-
 // Strategy for generating random rotations via exp
 fn arb_so3() -> impl Strategy<Value = SO3<A, B>> {
     arb_unit_quat().prop_map(SO3::from_quat)
-}
-
-// Strategy for generating small tangent vectors (tests small angle approximations)
-fn arb_tangent_small() -> impl Strategy<Value = SO3Tangent<A, B, A>> {
-    (-1e-10..1e-10f64, -1e-10..1e-10f64, -1e-10..1e-10f64)
-        .prop_map(|(x, y, z)| SO3Tangent::new(x, y, z))
 }
 
 // Strategy for generating tangent vectors with magnitude bounded by π
@@ -81,28 +69,8 @@ proptest! {
     fn exp_log_roundtrip(r in arb_so3()) {
         // exp(log(r)) ≈ r
         let v = r.log();
-        let r2 = SO3::<A, B>::exp(&v);
+        let r2 = v.exp();
         prop_assert!(quat_approx_eq(&r.quat, &r2.quat));
-    }
-
-    #[test]
-    fn log_exp_roundtrip(v in arb_tangent()) {
-        // log(exp(v)) ≈ v
-        let r = SO3::<A, B>::exp(&v);
-        let v2 = r.log();
-        prop_assert!(tangent_approx_eq(&v, &v2));
-    }
-
-    #[test]
-    fn exp_small_angle_produces_unit_quaternion(v in arb_tangent_small()) {
-        let r = SO3::<A, B>::exp(&v);
-        prop_assert!(abs_diff_eq!(r.quat.norm_squared(), 1.0, epsilon = EPS));
-    }
-
-    #[test]
-    fn exp_large_angle_produces_unit_quaternion(v in arb_tangent()) {
-        let r = SO3::<A, B>::exp(&v);
-        prop_assert!(abs_diff_eq!(r.quat.norm_squared(), 1.0, epsilon = EPS));
     }
 
     #[test]
@@ -112,14 +80,6 @@ proptest! {
         prop_assert!(abs_diff_eq!(v.x(), 0.0, epsilon = EPS));
         prop_assert!(abs_diff_eq!(v.y(), 0.0, epsilon = EPS));
         prop_assert!(abs_diff_eq!(v.z(), 0.0, epsilon = EPS));
-    }
-
-    #[test]
-    fn zero_exp_is_identity(_dummy in 0..1i32) {
-        let v: SO3Tangent<A, B, A> = SO3Tangent::new(0.0, 0.0, 0.0);
-        let r = SO3::<A, B>::exp(&v);
-        let id: SO3<A, B> = SO3::identity();
-        prop_assert!(quat_approx_eq(&r.quat, &id.quat));
     }
 
     #[test]
@@ -136,16 +96,6 @@ proptest! {
         let v: Vector3<A> = Vector3::new(x, y, z);
         let v_rotated = r.act(v);
         prop_assert!(abs_diff_eq!(v.norm(), v_rotated.norm(), epsilon = EPS));
-    }
-
-    #[test]
-    fn mul_vec_does_act(r in arb_so3(), x in -10.0..10.0f64, y in -10.0..10.0f64, z in -10.0..10.0f64) {
-        let v: Vector3<A> = Vector3::new(x, y, z);
-        let via_mul = r * v;
-        let via_act = r.act(v);
-        prop_assert!(abs_diff_eq!(via_mul.x(), via_act.x(), epsilon = EPS));
-        prop_assert!(abs_diff_eq!(via_mul.y(), via_act.y(), epsilon = EPS));
-        prop_assert!(abs_diff_eq!(via_mul.z(), via_act.z(), epsilon = EPS));
     }
 
     #[test]
@@ -402,7 +352,7 @@ proptest! {
         let x_lhs: SO3<A, B> = SO3::from_quat(q);
         let x_rhs: SO3<B, E> = SO3::from_quat(q);
         let adj_v = x_rhs.adjoint(v);
-        let conjugated = x_rhs.compose(SO3::exp(&v)).compose(x_lhs.inverse()).log();
+        let conjugated = x_rhs.compose(v.exp()).compose(x_lhs.inverse()).log();
         prop_assert!(abs_diff_eq!(adj_v.x(), conjugated.x(), epsilon = EPS));
         prop_assert!(abs_diff_eq!(adj_v.y(), conjugated.y(), epsilon = EPS));
         prop_assert!(abs_diff_eq!(adj_v.z(), conjugated.z(), epsilon = EPS));
@@ -482,6 +432,7 @@ proptest! {
         prop_assert!(abs_diff_eq!(axis.y(), axis_in_b.y(), epsilon = EPS));
         prop_assert!(abs_diff_eq!(axis.z(), axis_in_b.z(), epsilon = EPS));
     }
+
 }
 
 // Deterministic tests for known rotations
@@ -684,18 +635,19 @@ fn so3_clone() {
     assert!(quat_approx_eq(&r.quat, &r2.quat));
 }
 
+// act() and * are equivalent for both Vector3 and SO3Tangent
 #[test]
-fn so3_tangent_debug() {
-    let v: SO3Tangent<A, B, A> = SO3Tangent::new(1.0, 2.0, 3.0);
-    let s = format!("{:?}", v);
-    assert!(s.contains("SO3Tangent"));
+fn act_and_mul_are_equivalent() {
+    let r: SO3<A, B> = SO3::rot_z(FRAC_PI_2);
+    let vec: Vector3<A> = Vector3::new(1.0, 2.0, 3.0);
+    let tangent: SO3Tangent<C, D, A> = SO3Tangent::new(1.0, 2.0, 3.0);
+
+    let vec_act = r.act(vec);
+    let vec_mul = r * vec;
+    assert_eq!(vec_act, vec_mul);
+
+    let tan_act = r.act(tangent);
+    let tan_mul = r * tangent;
+    assert_eq!(tan_act, tan_mul);
 }
 
-#[test]
-fn so3_tangent_clone() {
-    let v: SO3Tangent<A, B, A> = SO3Tangent::new(1.0, 2.0, 3.0);
-    let v2 = v.clone();
-    assert!(abs_diff_eq!(v.x(), v2.x(), epsilon = EPS));
-    assert!(abs_diff_eq!(v.y(), v2.y(), epsilon = EPS));
-    assert!(abs_diff_eq!(v.z(), v2.z(), epsilon = EPS));
-}

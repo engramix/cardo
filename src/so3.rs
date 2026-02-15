@@ -1,10 +1,12 @@
+use crate::act::Act;
 use crate::mat::Mat3;
 use crate::quat::Quat;
+use crate::so3_tangent::SO3Tangent;
 use crate::vector3::Vector3;
 use num_traits::Float;
 use std::fmt;
 use std::marker::PhantomData;
-use std::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
+use std::ops::Mul;
 
 /// 3D rotation (element of Special Orthogonal group).
 ///
@@ -12,10 +14,15 @@ use std::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
 /// - Transforms vectors from frame A to frame B
 /// - Represents the orientation of frame A expressed in frame B
 #[must_use]
-#[derive(PartialEq)]
 pub struct SO3<A, B, T: Float = f64> {
     pub quat: Quat<T>,
     pub(crate) _frames: PhantomData<(A, B)>,
+}
+
+impl<A, B, T: Float> PartialEq for SO3<A, B, T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.quat == other.quat
+    }
 }
 
 impl<A, B, T: Float + fmt::Debug> fmt::Debug for SO3<A, B, T> {
@@ -38,18 +45,6 @@ impl<A, B, T: Float> Clone for SO3<A, B, T> {
         *self
     }
 }
-
-/// Tangent vector to SO3
-///
-/// `SO3Tangent<A, B, C>`:
-/// - Angular change (e.g. angular velocity) of frame A relative to frame B, expressed in frame C.
-#[must_use]
-pub struct SO3Tangent<A, B, C, T: Float = f64> {
-    pub data: [T; 3],
-    _frames: PhantomData<(A, B, C)>,
-}
-
-impl_framed_vector!(SO3Tangent<A, B, C>, 3);
 
 impl<A, B, T: Float> SO3<A, B, T> {
     pub fn from_quat(quat: Quat<T>) -> Self {
@@ -107,27 +102,16 @@ impl<A, B, T: Float> SO3<A, B, T> {
         start.rplus(delta * t)
     }
 
-    pub fn exp(v: &SO3Tangent<A, B, A, T>) -> Self {
-        let angle = v.dot(v).sqrt();
+    pub fn inverse(&self) -> SO3<B, A, T> {
+        SO3::from_quat(self.quat.conjugate())
+    }
 
-        if angle < T::epsilon() {
-            let half = T::one() / (T::one() + T::one());
-            Self::from_quat(Quat {
-                w: T::one(),
-                x: v.x() * half,
-                y: v.y() * half,
-                z: v.z() * half,
-            })
-        } else {
-            let half_angle = angle / (T::one() + T::one());
-            let k = half_angle.sin() / angle;
-            Self::from_quat(Quat {
-                w: half_angle.cos(),
-                x: v.x() * k,
-                y: v.y() * k,
-                z: v.z() * k,
-            })
-        }
+    pub fn compose<C>(&self, rhs: SO3<C, A, T>) -> SO3<C, B, T> {
+        SO3::from_quat(self.quat * rhs.quat)
+    }
+
+    pub fn then<C>(&self, lhs: SO3<B, C, T>) -> SO3<A, C, T> {
+        SO3::from_quat(lhs.quat * self.quat)
     }
 
     pub fn log(&self) -> SO3Tangent<A, B, A, T> {
@@ -151,22 +135,6 @@ impl<A, B, T: Float> SO3<A, B, T> {
         SO3Tangent::new(x * two * scale, y * two * scale, z * two * scale)
     }
 
-    pub fn inverse(&self) -> SO3<B, A, T> {
-        SO3::from_quat(self.quat.conjugate())
-    }
-
-    pub fn compose<C>(&self, rhs: SO3<C, A, T>) -> SO3<C, B, T> {
-        SO3::from_quat(self.quat * rhs.quat)
-    }
-
-    pub fn then<C>(&self, lhs: SO3<B, C, T>) -> SO3<A, C, T> {
-        SO3::from_quat(lhs.quat * self.quat)
-    }
-
-    pub fn act(&self, v: Vector3<A, T>) -> Vector3<B, T> {
-        Vector3::from_data(self.quat.rotate(&v.data))
-    }
-
     /// Perturb a rotation in the local frame.
     ///
     /// # Examples
@@ -186,7 +154,7 @@ impl<A, B, T: Float> SO3<A, B, T> {
     /// let updated = orientation.rplus(angvel * dt);
     /// ```
     pub fn rplus<C>(&self, rhs: SO3Tangent<C, A, C, T>) -> SO3<C, B, T> {
-        self.compose(SO3::exp(&rhs))
+        self.compose(rhs.exp())
     }
 
     pub fn rminus<C>(&self, rhs: SO3<C, B, T>) -> SO3Tangent<A, C, A, T> {
@@ -194,7 +162,7 @@ impl<A, B, T: Float> SO3<A, B, T> {
     }
 
     pub fn lplus<C>(&self, lhs: SO3Tangent<B, C, B, T>) -> SO3<A, C, T> {
-        self.then(SO3::exp(&lhs))
+        self.then(lhs.exp())
     }
 
     pub fn lminus<C>(&self, rhs: SO3<A, C, T>) -> SO3Tangent<C, B, C, T> {
@@ -246,7 +214,22 @@ impl<A, B, C, T: Float> Mul<SO3<C, A, T>> for SO3<A, B, T> {
     }
 }
 
-// Act: SO3<A,B> * Vector3<A> -> Vector3<B>
+// Act on Vector3: SO3<A,B> * Vector3<A> -> Vector3<B>
+impl<A, B, T: Float> Act<Vector3<A, T>> for SO3<A, B, T> {
+    type Output = Vector3<B, T>;
+    fn act(&self, v: Vector3<A, T>) -> Vector3<B, T> {
+        Vector3::from_data(self.quat.rotate(v.data))
+    }
+}
+
+// Act on SO3Tangent: SO3<A,B> * SO3Tangent<X,Y,A> -> SO3Tangent<X,Y,B>
+impl<A, B, X, Y, T: Float> Act<SO3Tangent<X, Y, A, T>> for SO3<A, B, T> {
+    type Output = SO3Tangent<X, Y, B, T>;
+    fn act(&self, v: SO3Tangent<X, Y, A, T>) -> SO3Tangent<X, Y, B, T> {
+        SO3Tangent::from_data(self.quat.rotate(v.data))
+    }
+}
+
 impl<A, B, T: Float> Mul<Vector3<A, T>> for SO3<A, B, T> {
     type Output = Vector3<B, T>;
     fn mul(self, rhs: Vector3<A, T>) -> Vector3<B, T> {
@@ -254,10 +237,9 @@ impl<A, B, T: Float> Mul<Vector3<A, T>> for SO3<A, B, T> {
     }
 }
 
-// Re-express tangent: SO3<A,B> * SO3Tangent<X,Y,A> -> SO3Tangent<X,Y,B>
 impl<A, B, X, Y, T: Float> Mul<SO3Tangent<X, Y, A, T>> for SO3<A, B, T> {
     type Output = SO3Tangent<X, Y, B, T>;
     fn mul(self, rhs: SO3Tangent<X, Y, A, T>) -> SO3Tangent<X, Y, B, T> {
-        SO3Tangent::from_data(self.quat.rotate(&rhs.data))
+        self.act(rhs)
     }
 }

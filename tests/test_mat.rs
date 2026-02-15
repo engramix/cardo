@@ -125,6 +125,12 @@ fn scalar_mul_left() {
 }
 
 #[test]
+fn scalar_mul_left_f32() {
+    let m: Mat<2, 2, f32> = Mat::from_data([[1.0, 2.0], [3.0, 4.0]]);
+    assert_eq!(2.0f32 * m, Mat::from_data([[2.0, 4.0], [6.0, 8.0]]));
+}
+
+#[test]
 fn index_mut() {
     let mut m: Mat3 = Mat::zeros();
     m[1][2] = 42.0;
@@ -154,4 +160,18 @@ fn eq() {
     let c: Mat<2, 2> = Mat::from_data([[1.0, 2.0], [3.0, 5.0]]);
     assert_eq!(a, b);
     assert_ne!(a, c);
+}
+
+#[test]
+fn row() {
+    let r: Mat<1, 3> = Mat::row([1.0, 2.0, 3.0]);
+    assert_eq!(r[0], [1.0, 2.0, 3.0]);
+}
+
+#[test]
+fn col() {
+    let c: Mat<3, 1> = Mat::col([1.0, 2.0, 3.0]);
+    assert_eq!(c[0], [1.0]);
+    assert_eq!(c[1], [2.0]);
+    assert_eq!(c[2], [3.0]);
 }

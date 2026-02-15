@@ -55,7 +55,7 @@ impl<T: Float> Quat<T> {
         }
     }
 
-    pub(crate) fn rotate(&self, v: &[T; 3]) -> [T; 3] {
+    pub(crate) fn rotate(&self, v: [T; 3]) -> [T; 3] {
         let p = Quat {
             w: T::zero(),
             x: v[0],
