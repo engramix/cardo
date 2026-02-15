@@ -63,24 +63,9 @@ impl<A, B, C, T: Float> SO3Tangent<A, B, C, T> {
         Mat3::identity() - w * half + w * w * (T::one() / theta_sq - k / theta)
     }
 
-    /// Approximate composition via BCH: log(exp(τ₁) · exp(τ₂)) ≈ τ₁ + τ₂ + ½[τ₁, τ₂]
-    /// where [·,·] denotes the Lie bracket.
-    pub fn bch_compose(&self, rhs: Self) -> Self {
-        let half = T::one() / (T::one() + T::one());
-        let bracket = self.ad() * rhs.data;
-        Self::from_data(std::array::from_fn(|i| {
-            self.data[i] + rhs.data[i] + bracket[i] * half
-        }))
-    }
-
-    pub fn rjac(&self) -> Mat3<T> {
-        self.ljac().transpose()
-    }
-
-    pub fn rjacinv(&self) -> Mat3<T> {
-        self.ljacinv().transpose()
-    }
 }
+
+impl_lie_tangent!(Tangent = SO3Tangent, AdjMat = Mat3);
 
 impl<A, B, T: Float> SO3Tangent<A, B, A, T> {
     pub fn exp(&self) -> SO3<A, B, T> {

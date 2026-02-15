@@ -75,38 +75,6 @@ impl<A, B, C, T: Float> SE3Tangent<A, B, C, T> {
         m
     }
 
-    /// Approximate composition via BCH: log(exp(τ₁) · exp(τ₂)) ≈ τ₁ + τ₂ + ½[τ₁, τ₂]
-    /// where [·,·] denotes the Lie bracket.
-    pub fn bch_compose(&self, rhs: Self) -> Self {
-        let half = T::one() / (T::one() + T::one());
-        let bracket = self.ad() * rhs.data;
-        Self::from_data(std::array::from_fn(|i| {
-            self.data[i] + rhs.data[i] + bracket[i] * half
-        }))
-    }
-
-    pub fn rjac(&self) -> Mat6<T> {
-        let lin = self.lin();
-        let ang = self.ang();
-
-        SE3Tangent::<A, B, C, T>::from_lin_ang(
-            std::array::from_fn(|i| -lin[i]),
-            std::array::from_fn(|i| -ang[i]),
-        )
-        .ljac()
-    }
-
-    pub fn rjacinv(&self) -> Mat6<T> {
-        let lin = self.lin();
-        let ang = self.ang();
-
-        SE3Tangent::<A, B, C, T>::from_lin_ang(
-            std::array::from_fn(|i| -lin[i]),
-            std::array::from_fn(|i| -ang[i]),
-        )
-        .ljacinv()
-    }
-
     fn fill_q(&self) -> Mat3<T> {
         let theta_sq = self.ang().iter().fold(T::zero(), |s, &x| s + x * x);
 
@@ -155,3 +123,5 @@ impl<A, B, T: Float> SE3Tangent<A, B, A, T> {
         SE3::from_vec_quat(so3_tangent.ljac() * self.lin(), so3_tangent.exp().quat)
     }
 }
+
+impl_lie_tangent!(Tangent = SE3Tangent, AdjMat = Mat6);

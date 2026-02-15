@@ -130,45 +130,12 @@ impl<A, B, T: Float> SO3<A, B, T> {
         Self::from_axis_angle(&Vector3::unit_z(), angle)
     }
 
-    /// Spherical linear interpolation between two rotations.
-    ///
-    /// ```
-    /// # use cardo::prelude::*;
-    /// struct Cam;
-    /// struct World;
-    ///
-    /// let start: SO3<Cam, World> = SO3::identity();
-    /// let end: SO3<Cam, World> = SO3::rot_z(1.0);
-    ///
-    /// let mid = SO3::slerp(start, end, 0.5);
-    /// ```
-    pub fn slerp(start: SO3<A, B, T>, end: SO3<A, B, T>, t: T) -> SO3<A, B, T> {
-        let delta = start.between(end).log();
-        start.rplus(delta * t)
-    }
-
     pub fn inverse(&self) -> SO3<B, A, T> {
         SO3::from_quat(self.quat.conjugate())
     }
 
-    pub fn inverse_with_jac(&self) -> (SO3<B, A, T>, Mat3<T>) {
-        (self.inverse(), -self.adjoint_matrix())
-    }
-
     pub fn compose<C>(&self, rhs: SO3<C, A, T>) -> SO3<C, B, T> {
         SO3::from_quat(self.quat * rhs.quat)
-    }
-
-    pub fn compose_with_jac<C>(&self, rhs: SO3<C, A, T>) -> (SO3<C, B, T>, Mat3<T>, Mat3<T>) {
-        (
-            self.compose(rhs),
-            rhs.adjoint_matrix().transpose(),
-            Mat3::identity(),
-        )
-    }
-
-    pub fn then<C>(&self, lhs: SO3<B, C, T>) -> SO3<A, C, T> {
-        SO3::from_quat(lhs.quat * self.quat)
     }
 
     pub fn log(&self) -> SO3Tangent<A, B, A, T> {
@@ -190,50 +157,6 @@ impl<A, B, T: Float> SO3<A, B, T> {
 
         let two = T::one() + T::one();
         SO3Tangent::new(x * two * scale, y * two * scale, z * two * scale)
-    }
-
-    /// Perturb a rotation in the local frame.
-    ///
-    /// # Examples
-    ///
-    /// Basic gyro integration
-    ///
-    /// ```
-    /// # use cardo::prelude::*;
-    /// struct Body;
-    /// struct World;
-    ///
-    /// let orientation: SO3<Body, World> = SO3::identity();
-    ///
-    /// let angvel: SO3Tangent<Body, Body, Body> = SO3Tangent::new(0.01, 0.1, 0.1);
-    /// let dt = 0.01;
-    ///
-    /// let updated = orientation.rplus(angvel * dt);
-    /// ```
-    pub fn rplus<C>(&self, rhs: SO3Tangent<C, A, C, T>) -> SO3<C, B, T> {
-        self.compose(rhs.exp())
-    }
-
-    pub fn rminus<C>(&self, rhs: SO3<C, B, T>) -> SO3Tangent<A, C, A, T> {
-        rhs.inverse().compose(*self).log()
-    }
-
-    pub fn lplus<C>(&self, lhs: SO3Tangent<B, C, B, T>) -> SO3<A, C, T> {
-        self.then(lhs.exp())
-    }
-
-    pub fn lminus<C>(&self, rhs: SO3<A, C, T>) -> SO3Tangent<C, B, C, T> {
-        self.compose(rhs.inverse()).log()
-    }
-
-    /// Relative rotation of `other` wrt `self`
-    pub fn between<C>(&self, other: SO3<C, B, T>) -> SO3<C, A, T> {
-        self.inverse().compose(other)
-    }
-
-    pub fn adjoint<C>(&self, v: SO3Tangent<C, A, C, T>) -> SO3Tangent<A, B, A, T> {
-        // NOTE: exp(tau<B, E, B>) * X_lhs<A, B> = X_rhs<B, E> * exp(tau<A, B, A>)
-        SO3Tangent::from_data(self.adjoint_matrix() * v.data)
     }
 
     pub fn adjoint_matrix(&self) -> Mat3<T> {
@@ -263,26 +186,11 @@ impl<A, B, T: Float> SO3<A, B, T> {
     }
 }
 
-// Compose: SO3<A,B> * SO3<C,A> -> SO3<C,B>
-impl<A, B, C, T: Float> Mul<SO3<C, A, T>> for SO3<A, B, T> {
-    type Output = SO3<C, B, T>;
-    fn mul(self, rhs: SO3<C, A, T>) -> SO3<C, B, T> {
-        self.compose(rhs)
-    }
-}
-
 // Act on Vector3: SO3<A,B> * Vector3<A> -> Vector3<B>
 impl<A, B, T: Float> Act<Vector3<A, T>> for SO3<A, B, T> {
     type Output = Vector3<B, T>;
     fn act(&self, v: Vector3<A, T>) -> Vector3<B, T> {
         Vector3::from_data(self.quat.rotate(v.data))
-    }
-}
-
-impl<A, B, T: Float> Mul<Vector3<A, T>> for SO3<A, B, T> {
-    type Output = Vector3<B, T>;
-    fn mul(self, rhs: Vector3<A, T>) -> Vector3<B, T> {
-        self.act(rhs)
     }
 }
 
@@ -316,9 +224,4 @@ impl<A, B, X, Y, T: Float> ActWithJac<SO3Tangent<X, Y, A, T>> for SO3<A, B, T> {
     }
 }
 
-impl<A, B, X, Y, T: Float> Mul<SO3Tangent<X, Y, A, T>> for SO3<A, B, T> {
-    type Output = SO3Tangent<X, Y, B, T>;
-    fn mul(self, rhs: SO3Tangent<X, Y, A, T>) -> SO3Tangent<X, Y, B, T> {
-        self.act(rhs)
-    }
-}
+impl_lie_group!(Group = SO3, Tangent = SO3Tangent, AdjMat = Mat3);

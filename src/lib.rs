@@ -1,5 +1,9 @@
 #[macro_use]
 mod macros;
+#[macro_use]
+mod lie_group;
+#[macro_use]
+mod lie_tangent;
 
 mod act;
 mod mat;
