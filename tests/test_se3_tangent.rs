@@ -29,7 +29,13 @@ fn arb_unit_axis() -> impl Strategy<Value = Vector3<A>> {
 }
 
 fn arb_se3_tangent() -> impl Strategy<Value = SE3Tangent<A, B, A>> {
-    (arb_unit_axis(), -PI..PI, -10.0..10.0f64, -10.0..10.0f64, -10.0..10.0f64)
+    // Bound angle away from zero so numerical Jacobian tests don't cross the θ=0
+    // boundary (where exp/log Taylor branches change, causing large finite-difference error).
+    let angle = prop_oneof![
+        -PI..-1e-3f64,
+        1e-3..PI,
+    ];
+    (arb_unit_axis(), angle, -10.0..10.0f64, -10.0..10.0f64, -10.0..10.0f64)
         .prop_map(|(axis, angle, vx, vy, vz)| {
             SE3Tangent::from_lin_ang(
                 [vx, vy, vz],

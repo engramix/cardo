@@ -8,11 +8,10 @@ error[E0277]: cannot multiply `cardo::SO3<Sensor, Body>` by `cardo::SO3<Body, Wo
 help: the following other types implement trait `Mul<Rhs>`
   --> src/so3.rs
    |
-   | impl<A, B, C, T: Float> Mul<SO3<C, A, T>> for SO3<A, B, T> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `cardo::SO3<A, B, T>` implements `Mul<cardo::SO3<C, A, T>>`
-...
-   | impl<A, B, T: Float> Mul<Vector3<A, T>> for SO3<A, B, T> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `cardo::SO3<A, B, T>` implements `Mul<cardo::Vector3<A, T>>`
-...
-   | impl<A, B, X, Y, T: Float> Mul<SO3Tangent<X, Y, A, T>> for SO3<A, B, T> {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `cardo::SO3<A, B, T>` implements `Mul<SO3Tangent<X, Y, A, T>>`
+   | impl_lie_group!(Group = SO3, Tangent = SO3Tangent, AdjMat = Mat3);
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   | |
+   | `cardo::SO3<A, B, T>` implements `Mul<SO3Tangent<X, Y, A, T>>`
+   | `cardo::SO3<A, B, T>` implements `Mul<cardo::SO3<C, A, T>>`
+   | `cardo::SO3<A, B, T>` implements `Mul<cardo::Vector3<A, T>>`
+   = note: this error originates in the macro `impl_lie_group` (in Nightly builds, run with -Z macro-backtrace for more info)
