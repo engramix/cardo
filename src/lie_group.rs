@@ -5,6 +5,24 @@
 ///   impl_lie_group!(Group = SE3, Tangent = SE3Tangent, AdjMat = Mat6);
 macro_rules! impl_lie_group {
     (Group = $Group:ident, Tangent = $Tangent:ident, AdjMat = $AdjMat:ident) => {
+        // Compile-time check that all group primitives are implemented.
+        // This function is never called; the compiler only verifies signatures.
+        #[doc(hidden)]
+        const _: () = {
+            #[allow(unused, unreachable_code, clippy::diverging_sub_expression)]
+            fn _assert_group_primitives<A, B, C, T: Float>(
+                g: $Group<A, B, T>,
+                rhs: $Group<C, A, T>,
+            ) {
+                let _: $Group<A, B, T> = $Group::<A, B, T>::identity();
+                let _: $Group<B, A, T> = g.inverse();
+                let _: $Group<C, B, T> = g.compose(rhs);
+                let _ = g.log();
+                let _: $AdjMat<T> = g.adjoint_matrix();
+                let _ = g.to_matrix();
+            }
+        };
+
         impl<A, B, T: Float> $Group<A, B, T> {
             pub fn then<C>(&self, lhs: $Group<B, C, T>) -> $Group<A, C, T> {
                 lhs.compose(*self)
